@@ -1,5 +1,3 @@
-import pytest
-
 from core.tekst import (
     dodaj_markery_stron,
     normalizuj_do_porownania,
@@ -20,10 +18,18 @@ def test_porownanie_zachowuje_diakrytyki():
     assert normalizuj_do_porownania("Łódź") != normalizuj_do_porownania("Lodz")
 
 
-@pytest.mark.xfail(reason="Znany błąd: NFKD rozwija '…' i ligatury, przesuwając pozycje trafień")
 def test_normalizacja_do_szukania_zachowuje_dlugosc_tekstu():
-    tekst = "Umowa… ﬁrma № 5"
+    tekst = "Umowa… ﬁrma № 5 İ ½"
     assert len(normalizuj_do_szukania(tekst)) == len(tekst)
+
+
+def test_trafienie_po_wielokropku_wskazuje_wlasciwy_fragment():
+    from core.szukanie import szukaj_w_ocr
+
+    ocr = "[STRONA_1]\n" + "Uwaga… " * 50 + "[STRONA_2]\nJan Kowalski"
+    trafienie = szukaj_w_ocr(ocr, "Jan Kowalski")[0]
+    assert trafienie["trafienie"] == "Jan Kowalski"
+    assert trafienie["strona"] == 2
 
 
 def test_markery_stron_dzielone_na_zescapowanym_znaczniku():

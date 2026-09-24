@@ -54,6 +54,5 @@ def test_cena_nieruchomosci_gdy_brak_wartosci_lacznej():
     assert czy_wartosc_transakcji_zgodna(wynik) == "✅"
 
 
-@pytest.mark.xfail(reason="Znany błąd: transza zapisana bez groszy liczona jako 0")
 def test_suma_transz_z_kwota_bez_groszy():
     assert czy_wartosc_transakcji_zgodna(_wynik("450 000,00 zł", "150 000,00", "300 000 zł")) == "✅"

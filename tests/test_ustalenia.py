@@ -1,5 +1,3 @@
-import pytest
-
 from core.ustalenia import dopasuj_pole, problemy_wg_pola, stan_sekcji, zbierz_problemy
 
 
@@ -57,13 +55,25 @@ def test_dopasuj_pole_nazwisko():
     assert dopasuj_pole("Niezgodność nazwiska", "Nazwisko różni się od UniFlow") == "nabywca_1"
     assert dopasuj_pole("Coś innego", "opis") is None
 
+import pytest
 
-@pytest.mark.xfail(reason="Znany błąd: 'nabywc' w opisie wygrywa z 'pesel'; brak pesel_2 w mapie")
+
+@pytest.mark.parametrize("tytul, opis, pole", [
+    ("Niezgodność imienia", "Imię drugiego nabywcy różni się od UniFlow", "nabywca_2"),
+    ("Niezgodność PESEL", "PESEL nabywcy różni się od UniFlow", "pesel_1"),
+    ("Numer KW", "Brak numeru KW w UniFlow", "numer_kw"),
+    ("Księga wieczysta", "Inny numer księgi", "numer_kw"),
+    ("Nabywca 2", "Nazwisko różni się od UniFlow", "nabywca_2"),
+    ("Liczba wnioskodawców", "W dokumencie 2 nabywców, w UniFlow 1 wnioskodawca", "nabywca_1"),
+])
+def test_dopasuj_pole_przypadki(tytul, opis, pole):
+    assert dopasuj_pole(tytul, opis) == pole
+
+
 def test_dopasuj_pole_pesel_drugiego_nabywcy():
     assert dopasuj_pole("Niezgodność PESEL", "PESEL drugiego nabywcy różni się") == "pesel_2"
 
 
-@pytest.mark.xfail(reason="Znany błąd: 'kw' (księga wieczysta) łapie słowo 'kwota'")
 def test_dopasuj_pole_kwota():
     assert dopasuj_pole("Niezgodna kwota", "Kwota ceny różni się") == "cena_nieruchomosci"
 

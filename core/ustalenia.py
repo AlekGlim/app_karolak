@@ -1,6 +1,7 @@
 """Ustalenia do panelu analityka: walidacje, rozbieżności i weryfikacja UniFlow."""
 
 import html
+import re
 
 from core.kwoty import wyciagnij_kwote
 from core.tekst import normalizuj_do_szukania
@@ -67,25 +68,38 @@ def stan_sekcji(klucze, wynik, problemy):
 
 
 # Mapowanie tytułów weryfikacji UniFlow na pola, których dotyczą.
-# Model zwraca luźne tytuły, więc dopasowujemy po słowach kluczowych —
+# Model zwraca luźne tytuły, więc dopasowujemy po początkach słów —
 # dzięki temu ostrzeżenie trafia też do dymka przy konkretnym polu.
+#
+# Kolejność ma znaczenie: wygrywa pierwsze dopasowanie. Nabywca jest na
+# końcu, bo słowo "nabywcy" pada w opisie niemal każdej niezgodności
+# ("PESEL drugiego nabywcy…"). "kw" tylko jako całe słowo — inaczej
+# łapało "kwotę".
 SLOWA_KLUCZOWE_POL = {
-    "nabywca_1": ["nabywc", "wnioskodawc", "imi", "nazwisk"],
-    "pesel_1": ["pesel"],
-    "numer_kw": ["ksi", "wieczyst", "kw"],
-    "nazwa_dewelopera": ["dewelop"],
-    "cena_nieruchomosci": ["cen", "kwot", "warto"],
-    "miasto": ["miejscowo", "miast"],
-    "ulica": ["ulic", "adres"],
+    "pesel_1": [r"\bpesel"],
+    "numer_kw": [r"\bksieg", r"\bksiag", r"\bwieczyst", r"\bkw\b"],
+    "nazwa_dewelopera": [r"\bdewelop"],
+    "cena_nieruchomosci": [r"\bcen", r"\bkwot", r"\bwartos"],
+    "miasto": [r"\bmiejscowos", r"\bmiast"],
+    "ulica": [r"\bulic", r"\badres"],
+    "nabywca_1": [r"\bnabywc", r"\bwnioskodawc", r"\bimie", r"\bimion", r"\bnazwisk"],
 }
+
+# Pola osobowe, które dla drugiej osoby mają odpowiednik z sufiksem _2.
+POLA_OSOBOWE = {"nabywca_1": "nabywca_2", "pesel_1": "pesel_2"}
+
+# "drugiego nabywcy", "Nabywca 2", "PESEL nr 2" — ale nie "2 nabywców".
+WZORZEC_DRUGIEJ_OSOBY = r"\bdrugi|\b(?:nabywc|wnioskodawc|pesel)\w*\s+(?:nr\s+)?2\b"
 
 
 def dopasuj_pole(tytul, opis):
     """Zgaduje, którego pola dotyczy wpis weryfikacji."""
     tekst = normalizuj_do_szukania(f"{tytul} {opis}")
 
-    for pole, slowa in SLOWA_KLUCZOWE_POL.items():
-        if any(slowo in tekst for slowo in slowa):
+    for pole, wzorce in SLOWA_KLUCZOWE_POL.items():
+        if any(re.search(wzorzec, tekst) for wzorzec in wzorce):
+            if pole in POLA_OSOBOWE and re.search(WZORZEC_DRUGIEJ_OSOBY, tekst):
+                return POLA_OSOBOWE[pole]
             return pole
 
     return None

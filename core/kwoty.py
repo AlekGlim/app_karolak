@@ -4,24 +4,34 @@ import re
 
 
 def wyciagnij_kwote(tekst):
+    """Kwota w groszach z tekstu pola albo 0.
 
+    Kolejno próbujemy:
+      1. kwoty z groszami gdziekolwiek w tekście ("transza 1: 150 000,00 zł")
+      2. całego pola jako kwoty ("450 000", "450 000 zł")
+      3. kwoty bez groszy zakończonej walutą ("50 000 zł (zadatek)")
+
+    Bez kroków 2-3 kwota zapisana bez ",00" dawała 0 i suma transz
+    fałszywie nie zgadzała się z wartością transakcji.
+    """
     if not tekst:
         return 0
 
     tekst = str(tekst)
 
     match = re.search(r'(\d[\d .]*,\d{2})', tekst)
+    if match:
+        return int(re.sub(r"[ .,]", "", match.group(1)))
 
-    if not match:
-        return 0
+    cale_pole = kwota_na_grosze(tekst)
+    if cale_pole is not None:
+        return cale_pole
 
-    kwota = match.group(1)
+    match = re.search(r"(\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:zł|zl|pln)", tekst, re.IGNORECASE)
+    if match:
+        return kwota_na_grosze(match.group(1)) or 0
 
-    kwota = kwota.replace(" ", "")
-    kwota = kwota.replace(".", "")
-    kwota = kwota.replace(",", "")
-
-    return int(kwota)
+    return 0
 
 
 def kwota_na_grosze(tekst):
@@ -30,9 +40,6 @@ def kwota_na_grosze(tekst):
     Rozumie "450 000,00 zł", "450.000,00", "450000", "450 000". Ostatni
     separator z 1-2 cyframi po nim to część ułamkowa; z trzema cyframi —
     separator tysięcy ("45.000" to 45 tysięcy, nie 45 zł).
-
-    Własna funkcja, a nie wyciagnij_kwote z aplikacji: tamta wymaga groszy
-    w zapisie (kwota bez ",00" daje 0 — błąd z listy).
     """
     if tekst is None:
         return None
@@ -53,7 +60,8 @@ def wzorzec_kwoty(grosze):
 
     Separator tysięcy może być spacją, kropką albo go nie być; część
     ułamkowa jest opcjonalna, gdy grosze są zerowe. Lookbehind i lookahead
-    pilnują, żeby 500 nie dopasowało się do środka "45 500,00" ani "500 000".
+    pilnują, żeby 500 nie dopasowało się do środka "45 500,00" ani "500 000",
+    a kwota bez groszy nie złapała "450 000,50".
     """
     zlote, gr = divmod(grosze, 100)
 
@@ -67,4 +75,4 @@ def wzorzec_kwoty(grosze):
     calkowita = r"[ .]?".join(grupy)
     ulamek = r"(?:,00)?" if gr == 0 else f",{gr:02d}"
 
-    return r"(?<![\d,.])(?<!\d[ .])" + calkowita + ulamek + r"(?!\d|[ .]\d{3})"
+    return r"(?<![\d,.])(?<!\d[ .])" + calkowita + ulamek + r"(?!\d|,\d|[ .]\d{3})"
