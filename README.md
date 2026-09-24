@@ -6,6 +6,8 @@ danych przez LLM, porównanie z danymi wniosku z UniFlow i szukajka w dokumencie
 **Pełna instrukcja — uruchomienie, praca analityka, co jest w plikach i jak
 wprowadzać zmiany: [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).**
 
+Opis funkcjonalności i pomysły na rozwój: [docs/OPIS_FUNKCJONALNOSCI.md](docs/OPIS_FUNKCJONALNOSCI.md).
+
 ## Uruchomienie
 
 Na serwerze (hurtownia i API dostępne):
