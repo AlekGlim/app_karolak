@@ -28,24 +28,15 @@ def test_niepoprawny_numer_wniosku(numer):
 
 # --- schematy i prompt ---
 
-def test_prompt_identyczny_z_wczesniejszym_f_stringiem():
+def test_prompt_wstawia_dane_bez_zmian():
     tekst_uniflow = '{\n  "a": 1\n}'
+    # klamry w tekście OCR nie mogą zepsuć formatowania szablonu
     ocr_z_numerami_stron = "[STRONA_1]\ntreść {z klamrami}"
-    # dokładnie ten f-string stał wcześniej w uruchom_analize
-    oczekiwany = f"""
-        DANE KLIENTÓW Z SYSTEMU UNIFLOW:
-
-        {tekst_uniflow}
-
-        PONIŻEJ ZNAJDUJE SIĘ TREŚĆ DOKUMENTU.
-
-        Porównuj dane klientów z UniFlow z danymi nabywców
-        występującymi w dokumencie.
-
-        TREŚĆ DOKUMENTU:
-
-        {ocr_z_numerami_stron}
-        """
+    oczekiwany = (
+        SZABLON_PROMPTU
+        .replace("{tekst_uniflow}", tekst_uniflow)
+        .replace("{ocr_text}", ocr_z_numerami_stron)
+    )
     assert zbuduj_prompt({"a": 1}, ocr_z_numerami_stron) == oczekiwany
 
 

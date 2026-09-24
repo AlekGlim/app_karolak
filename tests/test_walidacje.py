@@ -1,6 +1,6 @@
 import pytest
 
-from app import czy_wartosc_transakcji_zgodna, waliduj_nrb, waliduj_pesel
+from app import czy_wartosc_transakcji_zgodna, kwota_transzy, waliduj_nrb, waliduj_pesel
 
 
 @pytest.mark.parametrize("pesel", ["44051401359", "02070803628", "440 514 013 59"])
@@ -56,3 +56,21 @@ def test_cena_nieruchomosci_gdy_brak_wartosci_lacznej():
 
 def test_suma_transz_z_kwota_bez_groszy():
     assert czy_wartosc_transakcji_zgodna(_wynik("450 000,00 zł", "150 000,00", "300 000 zł")) == "✅"
+
+
+def test_transza_procentem_liczona_od_ceny():
+    wynik = _wynik("720 000,00 zł", "20% ceny", "216 000,00", "216 000,00", "144 000,00")
+    assert czy_wartosc_transakcji_zgodna(wynik) == "✅"
+
+
+def test_transza_procentem_z_kwota_bierze_kwote():
+    assert kwota_transzy("20%, tj. 144 000,00 zł", 72_000_000) == 14_400_000
+    assert kwota_transzy("12,5 % ceny", 80_000_000) == 10_000_000
+
+
+def test_nieczytelna_transza_nie_daje_falszywego_alarmu():
+    assert czy_wartosc_transakcji_zgodna(_wynik("450 000,00 zł", "150 000,00", "reszta ceny")) == "⚪"
+
+
+def test_pusty_harmonogram_nie_do_porownania():
+    assert czy_wartosc_transakcji_zgodna(_wynik("450 000,00 zł")) == "⚪"

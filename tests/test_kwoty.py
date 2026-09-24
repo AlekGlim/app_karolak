@@ -51,3 +51,26 @@ def test_wyciagnij_kwote_z_groszami():
 ])
 def test_wyciagnij_kwote_bez_groszy(tekst, grosze):
     assert wyciagnij_kwote(tekst) == grosze
+
+
+# --- kwota po numerze wiersza tabeli zapisanej zwykłym tekstem ---
+
+def test_kwota_po_numerze_wiersza_znaleziona_jako_niepewna():
+    from app import szukaj_kwoty_w_ocr
+    tekst = "Transza Kwota Termin\n1 144 000,00 zł 21-03-2026\n4 144 000,00 zł 30-06-2027"
+    trafienia = szukaj_kwoty_w_ocr(tekst, 14_400_000)
+    assert [t["trafienie"] for t in trafienia] == ["144 000,00", "144 000,00"]
+    assert not any(t["dokladne"] for t in trafienia)
+
+
+def test_kwota_scisla_wygrywa_z_niepewna():
+    from app import szukaj_kwoty_w_ocr
+    # gdy kwota stoi gdzieś samodzielnie, środek "1 144 000,00" nie jest brany
+    tekst = "cena 144 000,00 zł; tabela: 1 144 000,00 zł"
+    trafienia = szukaj_kwoty_w_ocr(tekst, 14_400_000)
+    assert [(t["pozycja"], t["dokladne"]) for t in trafienia] == [(5, True)]
+
+
+def test_kropka_przed_kwota_dalej_odpada():
+    # "1.144.000" to separator tysięcy, nie numer wiersza
+    assert not re.search(wzorzec_kwoty(14_400_000, scisle=False), "1.144.000,00")

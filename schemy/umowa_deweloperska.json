@@ -5,25 +5,25 @@
     "properties": {
         "numer_umowy": {
             "type": "object",
-            "description": "Numer umowy deweloperskiej (numer repertorium), znajduje się na początku dokumentu. Przykład: Repertorium A Nr 0000/2026. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Numer repertorium aktu notarialnego, którym zawarto umowę deweloperską — stoi w nagłówku aktu, np. 'Repertorium A nr 1123/2026'. To nie jest numer umowy kredytowej ani numer repertorium innego aktu przywołanego w treści (pełnomocnictwa, umowy przedwstępnej, aktu ustanowienia hipoteki). Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "Zapis z dokumentu razem z oznaczeniem repertorium, np. 'Repertorium A nr 1123/2026'."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam numer repertorium zapisany inaczej, np. 'Rep. A nr 1123/2026' albo 'A-1123/2026', także powtórzony w nagłówku lub stopce stron. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Numer repertorium TEGO SAMEGO aktu odczytany inaczej — inne cyfry numeru lub roku wyglądające na pomyłkę OCR (np. '1128/2026' przy '1123/2026', 'I123' zamiast '1123'). Nie wpisuj numerów repertorium innych aktów przywołanych w treści. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -38,25 +38,25 @@
         },
         "data_umowy": {
             "type": "object",
-            "description": "Data zawarcia umowy. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Data zawarcia umowy (sporządzenia aktu notarialnego) — zwykle na początku aktu, często zapisana słownie, np. 'Dnia czternastego marca dwa tysiące dwudziestego szóstego roku (14.03.2026 r.)'. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Data w formacie RRRR-MM-DD, np. 2026-03-14. Jeżeli dokument podaje termin opisowo, a nie konkretną datą (np. 'w terminie 3 miesięcy od...'), przepisz go słowami."
+                    "description": "Data w formacie RRRR-MM-DD, np. 2026-03-14."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ta sama data zapisana w dokumencie inaczej, np. '14 marca 2026 r.' lub '14.03.2026' przy wartości głównej 2026-03-14. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ta sama data zapisana inaczej, np. '14 marca 2026 r.', '14.03.2026' albo słownie 'czternastego marca dwa tysiące dwudziestego szóstego roku'. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "INNA data odnosząca się do tego samego faktu w innym miejscu dokumentu, np. '15 marca 2026' jako data zawarcia tej samej umowy — także wtedy, gdy wygląda to na pomyłkę odczytu jednej cyfry. Nie wpisuj dat innych zdarzeń (data urodzenia, wpisu do księgi wieczystej, termin transzy, aneks, data wystawienia dokumentu). Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "INNA data podana jako data zawarcia tej samej umowy w innym miejscu dokumentu (np. '15 marca 2026' na końcu aktu przy '14 marca 2026' na początku) — także gdy wygląda na pomyłkę odczytu jednej cyfry. Nie wpisuj dat innych zdarzeń: urodzenia, wpisów i odpisów z księgi wieczystej, pozwolenia na budowę, umowy przedwstępnej, pełnomocnictw, terminów transz i terminów przeniesienia własności. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -71,25 +71,25 @@
         },
         "nazwa_dewelopera": {
             "type": "object",
-            "description": "Nazwa dewelopera. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Deweloper — sprzedający w umowie deweloperskiej. Zwykle spółka (spółka z o.o., spółka komandytowa, S.A.), często spółka celowa grupy deweloperskiej; w komparycji występuje jako 'Deweloper' lub 'Sprzedający'. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Pełne imię i nazwisko w mianowniku; dla firmy pełna nazwa."
+                    "description": "Pełna nazwa firmy razem z formą prawną, w mianowniku, tak jak w komparycji, np. 'XYZ Development spółka z ograniczoną odpowiedzialnością'. Gdy deweloperem jest osoba fizyczna prowadząca działalność — imię, nazwisko i nazwa firmy. Nie wpisuj samego określenia 'Deweloper'."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ta sama osoba lub ten sam podmiot zapisany inaczej — odmiana przez przypadki ('Kowalskiego'), inna kolejność imienia i nazwiska, pominięte drugie imię, skrót imienia, pełna i skrócona nazwa firmy ('Alfa Sp. z o.o.' i 'Alfa'), drobna literówka w tym samym nazwisku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ta sama spółka zapisana inaczej: skrót formy prawnej ('Sp. z o.o.' zamiast 'spółka z ograniczoną odpowiedzialnością', 'S.A.', 'sp.k.'), nazwa bez formy prawnej ('XYZ Development'), odmiana przez przypadki ('XYZ Development spółki z ograniczoną odpowiedzialnością'), inna wielkość liter. Nie wpisuj określeń zdefiniowanych w umowie ('Deweloper', 'Sprzedający', 'Spółka'). Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "INNA osoba lub inny podmiot występujący w TEJ SAMEJ roli, np. gdy przez większość dokumentu nabywcą jest 'Jan Kowalski', a w jednym miejscu jako nabywca występuje 'Nowak'. Wpisuj tylko wtedy, gdy z kontekstu jednoznacznie wynika, że chodzi o tę samą rolę. Nie wpisuj osób w innych rolach: drugiego nabywcy jako złej wartości dla pierwszego (i odwrotnie), małżonka, pełnomocnika, przedstawiciela dewelopera, notariusza, świadków, zbywcy, właściciela sąsiedniej nieruchomości. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "INNA spółka wskazana jako deweloper lub sprzedający tej samej inwestycji, np. inna nazwa w komparycji i przy podpisach albo spółka o innym KRS lub NIP w tej samej roli. Nie wpisuj podmiotów w innych rolach: banku finansującego inwestycję, banku prowadzącego rachunek powierniczy, generalnego wykonawcy, komplementariusza, spółki dominującej lub grupy wymienionej informacyjnie, członków zarządu, pełnomocników dewelopera, notariusza. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -104,25 +104,25 @@
         },
         "nip_dewelopera": {
             "type": "object",
-            "description": "Numer NIP dewelopera. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "NIP dewelopera — 10 cyfr, zwykle w komparycji obok numerów KRS i REGON. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "NIP zapisany tak jak w dokumencie, np. '525-252-52-52' albo '5252525252'. Tylko NIP — nie REGON (9 lub 14 cyfr) i nie numer KRS."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam NIP zapisany inaczej: z myślnikami lub bez, ze spacjami, z prefiksem 'PL'. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "NIP dewelopera odczytany inaczej — inne, brakujące lub dodatkowe cyfry, litera w miejscu cyfry ('O' zamiast '0', 'l' zamiast '1'). Nie wpisuj NIP-ów innych podmiotów (bank, generalny wykonawca, komplementariusz) ani numerów KRS i REGON. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -137,25 +137,25 @@
         },
         "nabywca_1": {
             "type": "object",
-            "description": "Imię i nazwisko pierwszego nabywcy. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Imię i nazwisko pierwszego nabywcy — osoby wymienionej w komparycji jako pierwsza po stronie nabywców ('Nabywca', 'Kupujący'). Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Pełne imię i nazwisko w mianowniku; dla firmy pełna nazwa."
+                    "description": "Imię (imiona) i nazwisko w mianowniku, np. 'Maria Anna Nowak'. Bez tytułów, imion rodziców i nazwiska rodowego."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ta sama osoba lub ten sam podmiot zapisany inaczej — odmiana przez przypadki ('Kowalskiego'), inna kolejność imienia i nazwiska, pominięte drugie imię, skrót imienia, pełna i skrócona nazwa firmy ('Alfa Sp. z o.o.' i 'Alfa'), drobna literówka w tym samym nazwisku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ta sama osoba zapisana inaczej: odmiana przez przypadki ('Marii Nowak', 'Adamowi Nowakowi'), inna kolejność imienia i nazwiska, pominięte drugie imię, inicjał imienia, część nazwiska dwuczłonowego, drobna literówka w tym samym nazwisku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "INNA osoba lub inny podmiot występujący w TEJ SAMEJ roli, np. gdy przez większość dokumentu nabywcą jest 'Jan Kowalski', a w jednym miejscu jako nabywca występuje 'Nowak'. Wpisuj tylko wtedy, gdy z kontekstu jednoznacznie wynika, że chodzi o tę samą rolę. Nie wpisuj osób w innych rolach: drugiego nabywcy jako złej wartości dla pierwszego (i odwrotnie), małżonka, pełnomocnika, przedstawiciela dewelopera, notariusza, świadków, zbywcy, właściciela sąsiedniej nieruchomości. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "INNA osoba występująca w TEJ SAMEJ roli, np. gdy przez większość dokumentu tym nabywcą jest 'Maria Nowak', a w jednym miejscu jako ten sam nabywca występuje 'Maria Kowalska'. Wpisuj tylko wtedy, gdy z kontekstu jednoznacznie wynika, że chodzi o tę samą rolę. Nie wpisuj osób w innych rolach: drugiego nabywcy, małżonka wyrażającego zgodę, pełnomocnika, przedstawicieli dewelopera, notariusza, świadków, rodziców. Nazwisko rodowe podane obok obecnego ('Nowak z domu Kowalska') nie jest rozbieżnością. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -170,25 +170,25 @@
         },
         "pesel_1": {
             "type": "object",
-            "description": "PESEL pierwszego nabywcy. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "PESEL pierwszego nabywcy — 11 cyfr, w komparycji przy imieniu i nazwisku tej osoby. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "11 cyfr tak jak w dokumencie; tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam PESEL zapisany inaczej, np. ze spacjami albo rozdzielony złamaniem linii. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "PESEL tej samej osoby odczytany inaczej — inne, brakujące lub dodatkowe cyfry, litera w miejscu cyfry ('O' zamiast '0', 'l' zamiast '1'). Nie wpisuj PESEL-u innej osoby: drugiego nabywcy, małżonka, pełnomocnika, przedstawicieli dewelopera. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -203,25 +203,25 @@
         },
         "nabywca_2": {
             "type": "object",
-            "description": "Imię i nazwisko drugiego nabywcy. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Imię i nazwisko drugiego nabywcy — drugiej osoby po stronie nabywców. Pusta wartość, gdy nabywca jest jeden. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Pełne imię i nazwisko w mianowniku; dla firmy pełna nazwa."
+                    "description": "Imię (imiona) i nazwisko w mianowniku, np. 'Maria Anna Nowak'. Bez tytułów, imion rodziców i nazwiska rodowego."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ta sama osoba lub ten sam podmiot zapisany inaczej — odmiana przez przypadki ('Kowalskiego'), inna kolejność imienia i nazwiska, pominięte drugie imię, skrót imienia, pełna i skrócona nazwa firmy ('Alfa Sp. z o.o.' i 'Alfa'), drobna literówka w tym samym nazwisku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ta sama osoba zapisana inaczej: odmiana przez przypadki ('Marii Nowak', 'Adamowi Nowakowi'), inna kolejność imienia i nazwiska, pominięte drugie imię, inicjał imienia, część nazwiska dwuczłonowego, drobna literówka w tym samym nazwisku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "INNA osoba lub inny podmiot występujący w TEJ SAMEJ roli, np. gdy przez większość dokumentu nabywcą jest 'Jan Kowalski', a w jednym miejscu jako nabywca występuje 'Nowak'. Wpisuj tylko wtedy, gdy z kontekstu jednoznacznie wynika, że chodzi o tę samą rolę. Nie wpisuj osób w innych rolach: drugiego nabywcy jako złej wartości dla pierwszego (i odwrotnie), małżonka, pełnomocnika, przedstawiciela dewelopera, notariusza, świadków, zbywcy, właściciela sąsiedniej nieruchomości. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "INNA osoba występująca w TEJ SAMEJ roli, np. gdy przez większość dokumentu tym nabywcą jest 'Maria Nowak', a w jednym miejscu jako ten sam nabywca występuje 'Maria Kowalska'. Wpisuj tylko wtedy, gdy z kontekstu jednoznacznie wynika, że chodzi o tę samą rolę. Nie wpisuj osób w innych rolach: pierwszego nabywcy, małżonka wyrażającego zgodę, pełnomocnika, przedstawicieli dewelopera, notariusza, świadków, rodziców. Nazwisko rodowe podane obok obecnego ('Nowak z domu Kowalska') nie jest rozbieżnością. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -236,25 +236,25 @@
         },
         "pesel_2": {
             "type": "object",
-            "description": "PESEL drugiego nabywcy. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "PESEL drugiego nabywcy — 11 cyfr, w komparycji przy imieniu i nazwisku tej osoby. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "11 cyfr tak jak w dokumencie; tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam PESEL zapisany inaczej, np. ze spacjami albo rozdzielony złamaniem linii. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "PESEL tej samej osoby odczytany inaczej — inne, brakujące lub dodatkowe cyfry, litera w miejscu cyfry ('O' zamiast '0', 'l' zamiast '1'). Nie wpisuj PESEL-u innej osoby: pierwszego nabywcy, małżonka, pełnomocnika, przedstawicieli dewelopera. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -269,49 +269,49 @@
         },
         "rodzaj_nieruchomosci": {
             "type": "string",
-            "description": "Rodzaj nieruchomości"
+            "description": "Rodzaj przedmiotu umowy jednym z określeń: 'lokal mieszkalny', 'dom jednorodzinny', 'lokal użytkowy', 'inny' — w mianowniku, bez numeru i opisu."
         },
         "wojewodztwo": {
             "type": "string",
-            "description": "Województwo"
+            "description": "Województwo, w którym leży nieruchomość — tylko gdy dokument je podaje (zwykle przy opisie działki lub księgi wieczystej). Nie ustalaj go na podstawie nazwy miejscowości; gdy go nie ma, zwróć pustą wartość."
         },
         "miasto": {
             "type": "string",
-            "description": "Miejscowość"
+            "description": "Miejscowość, w której leży nieruchomość, w mianowniku (np. 'Warszawa', choć w dokumencie stoi 'w Warszawie'). Nie siedziba dewelopera, kancelarii notarialnej ani miejsce zamieszkania nabywców."
         },
         "ulica": {
             "type": "string",
-            "description": "Nazwa ulicy, bez numeru budynku"
+            "description": "Ulica, przy której stoi budynek z lokalem, w mianowniku, bez skrótu 'ul.'/'al.' i bez numeru, np. 'Puławska'. Nie adres dewelopera, kancelarii ani nabywców. Pusta, gdy budynek nie ma jeszcze adresu."
         },
         "numer_budynku": {
             "type": "string",
-            "description": "Numer budynku. Na przykład: 20A"
+            "description": "Numer porządkowy budynku, np. '17B'. Gdy adres nie jest jeszcze nadany, a dokument podaje oznaczenie robocze budynku (np. 'budynek B1'), przepisz je tak jak w dokumencie."
         },
         "numer_lokalu": {
             "type": "string",
-            "description": "Numer lokalu, jeżeli występuje"
+            "description": "Numer lokalu tak jak w dokumencie, bez słów 'lokal nr', np. '42' albo oznaczenie robocze 'B.2.14'. Pusta wartość, gdy przedmiotem umowy nie jest lokal."
         },
         "numer_dzialki": {
             "type": "object",
-            "description": "Numer działki gruntu. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Numer ewidencyjny działki, na której realizowana jest inwestycja, np. '12/5'. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "Numer tak jak w dokumencie, bez słów 'działka nr' i bez numeru obrębu, np. '12/5'. Gdy działek jest kilka, wpisz wszystkie rozdzielone przecinkiem i spacją."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam numer zapisany inaczej, np. 'dz. nr 12/5' albo '12 / 5'. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Numer tej samej działki odczytany inaczej — inne cyfry, litera w miejscu cyfry. Nie wpisuj numerów innych działek wymienionych w dokumencie (sąsiednich, drogi dojazdowej, objętych służebnością) ani numeru obrębu. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -326,25 +326,25 @@
         },
         "numer_kw": {
             "type": "object",
-            "description": "Numer księgi wieczystej (wszystkie, jeżeli kilka — rozdzielone przecinkiem). Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Numer księgi wieczystej nieruchomości gruntowej, na której realizowana jest inwestycja i z której zostanie wyodrębniony lokal (księga macierzysta). Nie wpisuj ksiąg dla udziału w garażu lub miejsca postojowego ani ksiąg, które mają być dopiero założone — należą do prawa_przynalezne lub dodatkowe_nieruchomosci. Gdy inwestycja leży na kilku księgach, wpisz wszystkie rozdzielone przecinkiem i spacją. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "Numer w formacie: kod sądu / 8 cyfr / cyfra kontrolna, np. 'WA1M/00123456/7'; tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam numer zapisany inaczej: spacje lub myślniki zamiast ukośników, inna wielkość liter, rozdzielony złamaniem linii. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Numer tej samej księgi odczytany inaczej — inne, brakujące lub dodatkowe cyfry, litera w miejscu cyfry ('0O123456' zamiast '00123456'). Nie wpisuj numerów innych ksiąg wymienionych w dokumencie (garażu, działki drogowej, księgi, z której działkę odłączono). Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -359,7 +359,7 @@
         },
         "cena_nieruchomosci": {
             "type": "string",
-            "description": "Cena nieruchomości w PLN"
+            "description": "Cena samego lokalu (domu) będącego przedmiotem umowy, brutto, bez cen miejsc postojowych, komórek i innych praw — cyframi z groszami, tak jak w dokumencie, np. '685 000,00 zł'. Nie cena za m² i nie kwota słownie."
         },
         "prawa_przynalezne": {
             "type": "array",
@@ -369,52 +369,52 @@
                 "properties": {
                     "rodzaj": {
                         "type": "string",
-                        "description": "np. miejsce postojowe, udział w garażu wielostanowiskowym, komórka lokatorska, garaż, boks rowerowy"
+                        "description": "Jedno z określeń: 'miejsce postojowe', 'udział w garażu wielostanowiskowym', 'garaż', 'komórka lokatorska', 'boks rowerowy', 'schowek', 'inne'."
                     },
                     "tytul_prawny": {
                         "type": "string",
-                        "description": "np. prawo wyłącznego korzystania, udział w prawie własności, udział w nieruchomości wspólnej"
+                        "description": "Jedno z określeń: 'prawo wyłącznego korzystania', 'udział we współwłasności', 'udział w nieruchomości wspólnej', 'odrębna własność', 'inne'. To klasyfikacja, a nie cytat z dokumentu."
                     },
                     "oznaczenie": {
                         "type": "string",
-                        "description": "Oznaczenie wynikające z dokumentu, np. A3, G26, MLAC/G26, K12."
+                        "description": "Oznaczenie z dokumentu, przepisane dokładnie, np. 'A3', 'G26', 'MLAC/G26', 'K12'."
                     },
                     "cena": {
                         "type": "string",
-                        "description": "Cena zakupu lub deklarowana wartość zabezpieczenia przypisana do danego prawa, jeżeli została wskazana w dokumencie."
+                        "description": "Cena przypisana do tego prawa, brutto, cyframi z groszami tak jak w dokumencie, np. '35 000,00 zł'. Pusta, gdy dokument nie podaje jej osobno."
                     }
                 }
             }
         },
         "laczna_wartosc_transakcji": {
             "type": "string",
-            "description": "Łączna wartość transakcji w PLN"
+            "description": "Łączna cena wszystkiego, co nabywcy kupują tą umową (lokal, prawa przynależne, dodatkowe nieruchomości), brutto, cyframi z groszami, np. '720 000,00 zł'. Przepisz kwotę z dokumentu; gdy dokument podaje tylko jedną cenę, wpisz ją. Nie sumuj sam kwot z różnych miejsc."
         },
         "bank_powiernika": {
             "type": "string",
-            "description": "Bank prowadzący rachunek powierniczy"
+            "description": "Bank prowadzący mieszkaniowy rachunek powierniczy — pełna nazwa w mianowniku, np. 'Bank Powierniczy S.A.'. Nie bank finansujący inwestycję (chyba że to ten sam bank)."
         },
         "otwarty_numer_rachunku_powierniczego": {
             "type": "object",
-            "description": "Numer otwartego rachunku powierniczego. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Numer otwartego mieszkaniowego rachunku powierniczego — rachunku inwestycji, wspólnego dla wszystkich nabywców; 26 cyfr (NRB), czasem z prefiksem 'PL'. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "Numer tak jak w dokumencie, np. '03 1090 1234 0000 0001 2345 1234'."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam numer w innym zapisie: inne grupowanie cyfr, bez spacji, z prefiksem 'PL', rozdzielony złamaniem linii. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam rachunek odczytany inaczej — inne, brakujące lub dodatkowe cyfry, litera w miejscu cyfry. Nie wpisuj indywidualnego numeru rachunku nabywcy (to osobne pole), rachunku bieżącego dewelopera ani rachunku do opłaty rezerwacyjnej lub zadatku. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -429,25 +429,25 @@
         },
         "numer_rachunku_powierniczego": {
             "type": "object",
-            "description": "Numer indywidualnego rachunku powierniczego nadany do otwartego mieszkaniowego rachunku powierniczego. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Indywidualny numer rachunku powierniczego nadany nabywcom do wpłat na otwarty rachunek powierniczy — 26 cyfr (NRB); na ten numer bank wypłaca transze kredytu. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Zapis zgodny z oczekiwanym formatem identyfikatora: tam, gdzie powinna być cyfra, odrzuć odczyt z literą."
+                    "description": "Numer tak jak w dokumencie, np. '19 1090 1234 0000 0001 9876 5432'."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam numer w innym zapisie: inne grupowanie cyfr, bez spacji, z prefiksem 'PL', rozdzielony złamaniem linii. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie wpisuj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ten sam rachunek odczytany inaczej — inne, brakujące lub dodatkowe cyfry, litera w miejscu cyfry. Nie wpisuj numeru otwartego rachunku powierniczego (to osobne pole) ani innych rachunków dewelopera. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -462,33 +462,33 @@
         },
         "liczba_transz": {
             "type": "string",
-            "description": "Liczba transz w harmonogramie"
+            "description": "Liczba płatności w harmonogram_transz (razem z zadatkiem lub opłatą rezerwacyjną, jeżeli tam są), sama liczba, np. '4'."
         },
         "laczna_suma_harmonogramu": {
             "type": "string",
-            "description": "Łączna suma transz w PLN"
+            "description": "Suma płatności z harmonogramu, tylko gdy dokument podaje ją wprost; w przeciwnym razie pusta wartość — sumę liczy aplikacja."
         },
         "termin_przeniesienia_wlasnosci": {
             "type": "object",
-            "description": "Termin przeniesienia własności. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Termin, do którego deweloper zobowiązuje się przenieść na nabywców własność lokalu (zawrzeć umowę przeniesienia własności). Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Data w formacie RRRR-MM-DD, np. 2026-03-14. Jeżeli dokument podaje termin opisowo, a nie konkretną datą (np. 'w terminie 3 miesięcy od...'), przepisz go słowami."
+                    "description": "Data w formacie RRRR-MM-DD, np. 2027-06-30. Gdy dokument podaje termin opisowo (np. 'w terminie 3 miesięcy od uzyskania pozwolenia na użytkowanie'), przepisz go słowami tak jak w dokumencie."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ta sama data zapisana w dokumencie inaczej, np. '14 marca 2026 r.' lub '14.03.2026' przy wartości głównej 2026-03-14. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ta sama data zapisana inaczej, np. 'do dnia 30 czerwca 2027 r.' albo '30.06.2027' przy wartości głównej 2027-06-30. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "INNA data odnosząca się do tego samego faktu w innym miejscu dokumentu, np. '15 marca 2026' jako data zawarcia tej samej umowy — także wtedy, gdy wygląda to na pomyłkę odczytu jednej cyfry. Nie wpisuj dat innych zdarzeń (data urodzenia, wpisu do księgi wieczystej, termin transzy, aneks, data wystawienia dokumentu). Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "INNY termin przeniesienia własności tego samego lokalu podany w innym miejscu dokumentu (np. '30 czerwca 2027' w jednym paragrafie, '30 września 2027' w innym). Nie wpisuj terminów innych zdarzeń: ustanowienia odrębnej własności (osobne pole), zakończenia budowy, odbioru lokalu, pozwolenia na użytkowanie, terminów transz. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -503,25 +503,25 @@
         },
         "termin_odrebnej_wlasnosci": {
             "type": "object",
-            "description": "Termin ustanowienia odrębnej własności. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
+            "description": "Termin ustanowienia odrębnej własności lokalu. Często to ta sama umowa co przeniesienie własności — wtedy wpisz ten sam termin. Sprawdź wszystkie miejsca w dokumencie, w których występuje ta informacja: wartość prawidłową wpisz do wartosc_glowna, jej inne zapisy do wartosci_ok, a zapisy niezgodne do wartosci_zle. Gdy informacji nie ma w dokumencie, zwróć pustą wartość główną i puste listy.",
             "properties": {
                 "wartosc_glowna": {
                     "type": "string",
-                    "description": "Data w formacie RRRR-MM-DD, np. 2026-03-14. Jeżeli dokument podaje termin opisowo, a nie konkretną datą (np. 'w terminie 3 miesięcy od...'), przepisz go słowami."
+                    "description": "Data w formacie RRRR-MM-DD, np. 2027-06-30. Gdy dokument podaje termin opisowo (np. 'w terminie 3 miesięcy od uzyskania pozwolenia na użytkowanie'), przepisz go słowami tak jak w dokumencie."
                 },
                 "wartosci_ok": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "Ta sama data zapisana w dokumencie inaczej, np. '14 marca 2026 r.' lub '14.03.2026' przy wartości głównej 2026-03-14. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "Ta sama data zapisana inaczej, np. 'do dnia 30 czerwca 2027 r.' albo '30.06.2027' przy wartości głównej 2027-06-30. Wpisuj wyłącznie zapisy różniące się od wartości głównej. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "wartosci_zle": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "description": "INNA data odnosząca się do tego samego faktu w innym miejscu dokumentu, np. '15 marca 2026' jako data zawarcia tej samej umowy — także wtedy, gdy wygląda to na pomyłkę odczytu jednej cyfry. Nie wpisuj dat innych zdarzeń (data urodzenia, wpisu do księgi wieczystej, termin transzy, aneks, data wystawienia dokumentu). Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
+                    "description": "INNY termin ustanowienia odrębnej własności tego samego lokalu podany w innym miejscu dokumentu. Nie wpisuj terminów innych zdarzeń: przeniesienia własności (osobne pole), zakończenia budowy, odbioru lokalu, terminów transz. Każdy przepisz dokładnie tak, jak stoi w tekście dokumentu; wartość, której nie ma w tekście, jest błędem. Pusta lista, gdy takich zapisów nie ma."
                 },
                 "uzasadnienie": {
                     "type": "string",
@@ -540,54 +540,66 @@
                 "type": "object",
                 "properties": {
                     "numer_transzy": {
-                        "type": "integer"
+                        "type": "integer",
+                        "description": "Kolejny numer płatności w tej tablicy: 1, 2, 3…"
                     },
                     "rodzaj": {
                         "type": "string",
-                        "description": "Wszystkie płatności zaliczane na poczet ceny nieruchomości. Uwzględnij zarówno zadatek, opłatę rezerwacyjną, zaliczki, jak i transze harmonogramu. Opisz rodzaj transzy w skróconej formie na przykład,transza 1, transza 2. jeśli występuje to zadatek, opłata rezerwacyjna. Jeśli występuje zadatek lub opłata rezerwacyjna nie numeruj jej jako transza. Każda płatność powinna zostać zwrócona jako osobny element tablicy."
+                        "description": "Krótkie określenie płatności: 'transza 1', 'transza 2'…; dla płatności spoza numeracji transz — 'zadatek', 'opłata rezerwacyjna' albo 'zaliczka'."
                     },
                     "kwota": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Kwota płatności brutto cyframi z groszami, tak jak w dokumencie, np. '144 000,00 zł'. Gdy dokument podaje tylko procent ceny, przepisz procent (np. '20% ceny')."
                     },
                     "termin_platnosci": {
                         "type": "string",
-                        "description": "Termin płatności w skróconej formie."
+                        "description": "Data płatności w formacie RRRR-MM-DD, gdy dokument podaje konkretną datę; w przeciwnym razie warunek krótko, słowami z dokumentu (np. '7 dni od zakończenia stanu surowego')."
                     }
                 }
-            }
+            },
+            "description": "Wszystkie płatności na poczet ceny, w kolejności z dokumentu: opłata rezerwacyjna, zadatek, zaliczki i transze. Każda płatność to osobny element."
         },
         "dodatkowe_nieruchomosci": {
             "type": "array",
-            "description": "Samodzielne nieruchomości nabywane wraz z nieruchomością główną.Wypełniaj wyłącznie wtedy, gdy dokument wskazuje na odrębny przedmiot własności (odrębną nieruchomość, odrębną księgę wieczystą, odrębny lokal niemieszkalny, garaż                         lub komórkę stanowiącą samodzielny przedmiot obrotu). Nie wpisuj tutaj miejsc postojowych, ogródków, tarasów ani komórek objętych wyłącznie prawem do korzystania lub udziałem związanym z lokalem. Takie prawa należy umieszczać w sekcji                         prawa_przynalezne. ",
+            "description": "Samodzielne nieruchomości nabywane wraz z nieruchomością główną. Wypełniaj wyłącznie wtedy, gdy dokument wskazuje odrębny przedmiot własności (odrębną nieruchomość, odrębną księgę wieczystą, odrębny lokal niemieszkalny, garaż lub komórkę będącą samodzielnym przedmiotem obrotu). Nie wpisuj tu miejsc postojowych, ogródków, tarasów ani komórek objętych wyłącznie prawem do korzystania lub udziałem związanym z lokalem — te należą do prawa_przynalezne.",
             "items": {
                 "type": "object",
                 "properties": {
                     "rodzaj_nieruchomosci": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Jedno z określeń: 'lokal niemieszkalny', 'garaż', 'komórka', 'działka', 'inny'."
                     },
                     "tytul_prawny": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Jedno z określeń: 'odrębna własność', 'udział we współwłasności', 'użytkowanie wieczyste', 'inne'. To klasyfikacja, a nie cytat z dokumentu."
                     },
                     "numer_kw": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Numer księgi wieczystej tej nieruchomości, np. 'WA1M/00654321/3'."
                     },
                     "miasto": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Miejscowość w mianowniku."
                     },
                     "ulica": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Ulica w mianowniku, bez 'ul.' i bez numeru."
                     },
                     "numer_budynku": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Numer budynku tak jak w dokumencie."
                     },
                     "numer_lokalu": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Numer lokalu tak jak w dokumencie."
                     },
                     "oznaczenie": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Oznaczenie z dokumentu, przepisane dokładnie, np. 'G26'."
                     },
                     "cena_nieruchomosci": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Cena tej nieruchomości brutto, cyframi z groszami tak jak w dokumencie."
                     }
                 }
             }
@@ -608,31 +620,66 @@
                     },
                     "waga": {
                         "type": "string",
-                        "description": "Poziom istotności z perspektywy banku: niska - wymaga jedynie odnotowania; srednia - wymaga dodatkowej weryfikacji lub dokumentów; wysoka - może wpływać na możliwość finansowania, ustanowienie zabezpieczenia hipotecznego, uruchomienie kredytu lub bezpieczeństwo ekspozycji banku. Typowa umowa deweloperska nie powinna generować ryzyk srednich lub wysokich bez wyraźnych przesłanek wynikających z dokumentu."
+                        "description": "Wyłącznie 'niska', 'srednia' albo 'wysoka' (bez polskich znaków). niska — wymaga jedynie odnotowania; srednia — wymaga dodatkowej weryfikacji lub dokumentów; wysoka — może wpływać na możliwość finansowania, ustanowienie zabezpieczenia hipotecznego, uruchomienie kredytu lub bezpieczeństwo ekspozycji banku. Typowa umowa deweloperska nie powinna generować ryzyk srednich lub wysokich bez wyraźnych przesłanek w dokumencie."
                     }
                 }
             }
         },
         "weryfikacja_uniflow": {
             "type": "array",
-            "description": "Porównaj dane klientów z UniFlow a także ilość wnioskodawców z danymi odczytanymi z dokumentu. Dla każdego wyniku zwróć status, tytul oraz opis. Jeśli wyniki są powiązane, ( na przykład niezgodność imienia i nazwiska zwróć je w jednym statusie).  Pole status może przyjmować wyłącznie wartości: 'zgodne', 'niezgodne', 'brak_danych'. Pole tytul jest obowiązkowe i powinno zawierać krótki nagłówek 2-5 słów. Pole opis jest obowiązkowe i powinno zawierać krótkie wyjaśnienie biznesowe 1-2 zdania. Przykład: status='niezgodne', tytul='Niezgodność nazwiska', opis='Nazwisko pierwszego nabywcy różni się od danych UniFlow. Dodatkowy przykład: Jeśli imie i nazwisko w Uniflow to Jan Kowalski a imie i nazwisko wyekstrahowane z dokumentu to Jan Piotr Kowalski zwróć status żółty'",
+            "description": "Porównaj nabywców z dokumentu z wnioskodawcami z UniFlow (dane na początku zapytania). Porównuj przede wszystkim PESEL — ten sam PESEL to ta sama osoba, nawet przy innym zapisie nazwiska. Sprawdź też imię i nazwisko oraz liczbę osób. Zwróć jeden element na każdy problem; powiązane niezgodności tej samej osoby połącz w jeden element. Zgodnych danych nie zwracaj.",
             "items": {
                 "type": "object",
                 "properties": {
                     "status": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Wyłącznie jedna z wartości: 'niezgodne' — inna osoba, inny PESEL albo inna liczba osób (także wnioskodawca, który nie jest nabywcą); 'do_wyjasnienia' — ta sama osoba (zgodny PESEL), ale inny zapis imienia lub nazwiska, np. zmiana nazwiska po ślubie albo pominięte drugie imię ('Jan Kowalski' w UniFlow, 'Jan Piotr Kowalski' w dokumencie); 'brak_danych' — w dokumencie lub w UniFlow brakuje danych potrzebnych do porównania."
+                    },
+                    "pole": {
+                        "type": "string",
+                        "enum": ["nabywca_1", "nabywca_2", "pesel_1", "pesel_2", ""],
+                        "description": "Pole dokumentu, którego dotyczy problem: 'nabywca_1' / 'nabywca_2' — imię lub nazwisko pierwszego / drugiego nabywcy; 'pesel_1' / 'pesel_2' — PESEL pierwszego / drugiego nabywcy. Gdy różni się i nazwisko, i PESEL tej samej osoby, wskaż PESEL. Pusty tekst, gdy problem nie dotyczy jednego pola (np. inna liczba osób)."
                     },
                     "tytul": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Krótki nagłówek, 2-5 słów, np. 'Niezgodność nazwiska'."
                     },
                     "opis": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "1-2 zdania z obiema porównywanymi wartościami i wskazaniem osoby, np. 'Nazwisko drugiego nabywcy w umowie (Nowak) różni się od danych UniFlow (Kowalska); PESEL zgodny.'"
                     }
                 },
                 "required": [
                     "status",
+                    "pole",
                     "tytul",
                     "opis"
+                ]
+            }
+        },
+        "zrodla": {
+            "type": "array",
+            "description": "Miejsce w dokumencie, z którego pochodzi każda wypełniona wartość. Zwróć jeden element dla każdego wypełnionego pola z danymi — także dla pól w tablicach harmonogram_transz, prawa_przynalezne i dodatkowe_nieruchomosci. Pomiń pola podsumowanie, potencjalne_ryzyka, weryfikacja_uniflow i zrodla. Dla pól z wartosc_glowna wskaż miejsce wartości głównej. Wskaż miejsce, w którym wartość występuje w swojej roli — dla ceny lokalu zdanie o cenie lokalu, dla miasta położenie nieruchomości, a nie siedzibę kancelarii — a nie pierwsze lepsze wystąpienie tego samego napisu.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "pole": {
+                        "type": "string",
+                        "description": "Klucz pola ze schematu, np. 'numer_kw'. Dla pól w tablicach: nazwa tablicy, numer elementu od 1 w nawiasach kwadratowych i klucz pola, np. 'harmonogram_transz[2].kwota', 'prawa_przynalezne[1].oznaczenie'."
+                    },
+                    "strona": {
+                        "type": "integer",
+                        "description": "Numer strony z najbliższego znacznika [STRONA_X] przed cytatem."
+                    },
+                    "cytat": {
+                        "type": "string",
+                        "description": "Fragment dokumentu przepisany dosłownie, 3-15 słów, zawierający wartość razem ze słowami, które wskazują jej rolę, np. 'lokal mieszkalny nr 42' albo 'Cena lokalu mieszkalnego wynosi 685 000,00 zł'. Bez zmian w pisowni, bez znaczników HTML i bez wielokropków; łamanie linii zastąp spacją. Dla wiersza tabeli przepisz treść komórek po kolei, oddzielając je znakiem ' | ', np. '1 | 144 000,00 zł | 21-03-2026'."
+                    }
+                },
+                "required": [
+                    "pole",
+                    "strona",
+                    "cytat"
                 ]
             }
         }
@@ -643,7 +690,8 @@
         "nabywca_1",
         "podsumowanie",
         "potencjalne_ryzyka",
-        "weryfikacja_uniflow"
+        "weryfikacja_uniflow",
+        "zrodla"
     ],
     "additionalProperties": false
 }

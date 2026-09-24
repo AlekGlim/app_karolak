@@ -33,7 +33,7 @@ Podział pracy:
 
 - **Model językowy** czyta dokument i wyciąga dane.
 - **Python sprawdza to, co da się sprawdzić deterministycznie:** sumy kontrolne,
-  zgodność kwot, obecność wartości w tekście i numery stron.
+  zgodność kwot, czy cytat wskazany przez model naprawdę stoi na podanej stronie.
 - **Analityk podejmuje decyzję.** Aplikacja pokazuje tylko to, co wymaga jego uwagi.
 
 Większość dokumentów to **skany**. OCR (prebuilt-layout) zwraca tekst w markdownie
@@ -169,8 +169,8 @@ Lewa kolumna to podgląd dokumentu z szukajką.
   z OCR są zamieniane na czytelny tekst.
 - **Pasek nawigacji** „← Poprzednie · Trafienie 2 z 5 · strona 3 · Następne →”
   przechodzi po wystąpieniach. Bez frazy przewija strony.
-- **PDF z warstwą tekstową** (nie skan) ma trafienie zaznaczone dodatkowo prostokątem
-  na obrazie strony. Szukanie działa w nim także przed analizą.
+- **Tylko strona, bez zaznaczania na obrazie.** Aplikacja wskazuje stronę i fragment
+  tekstu — także dla PDF-a z warstwą tekstową. Szukanie działa po analizie.
 
 **Szukanie po znaczeniu, a nie po napisie.** Szukajka rozpoznaje typ frazy:
 
@@ -241,7 +241,7 @@ Umowa demo (`dev/umowa_demo_skan.pdf`) ma celowe usterki do oglądania:
 
 | Zasada | Dlaczego |
 |---|---|
-| **Numery stron liczy Python, nie model.** Wartość jest szukana w tekście OCR, a strona wynika z najbliższego markera `[STRONA_X]`. | Model myli się przy numerach stron. Wyszukiwanie w tekście jest powtarzalne. |
+| **Stronę wartości wskazuje model, a Python ją sprawdza.** Przy każdym polu model podaje stronę i krótki cytat (`zrodla`). Python szuka cytatu w tekście OCR: stoi na wskazanej stronie → ✓, na innej → wygrywa tekst, nie ma go → ✕. | Model rozumie rolę wartości (cena lokalu, a nie pierwsza kwota w dokumencie), daty słownie i pola złożone, czego szukanie napisu nie umie. Za to myli numery stron i potrafi zmyślić — stąd sprawdzenie cytatu. |
 | **Każda rozbieżność zgłoszona przez model jest sprawdzana w tekście.** Wartość, której nie ma w dokumencie, jest odrzucana. | Chroni przed wartościami zmyślonymi przez model. Liczba odrzuconych to tania miara jakości promptu. |
 | **Twarde kontrole (PESEL, NRB, sumy) liczy Python.** | Sumy kontrolnej nie trzeba zgadywać. |
 | **Klucz cache zawiera wersję pytania.** | Po zmianie schematu nie pokażemy wyniku odpowiadającego na stare pytanie. |
@@ -253,8 +253,9 @@ Umowa demo (`dev/umowa_demo_skan.pdf`) ma celowe usterki do oglądania:
 
 ## 5. Znane ograniczenia
 
-- **Brak położenia słów na skanie.** OCR nie zwraca współrzędnych, więc na skanie
-  nie zaznaczamy frazy prostokątem. Analityk dostaje stronę i fragment tekstu.
+- **Brak położenia słów.** Nie zaznaczamy frazy na obrazie strony — OCR nie zwraca
+  współrzędnych, a zaznaczanie z warstwy tekstowej PDF zostało usunięte, żeby był jeden
+  scenariusz dla wszystkich dokumentów. Analityk dostaje stronę i fragment tekstu.
 - **Format OCR z produkcji nie jest jeszcze sprawdzony na prawdziwym dokumencie.**
   Obsługa znaczników stron i tabel powstała na podstawie opisu i danych demo.
 - **Typ kolumny `nr_wniosku` w hurtowni** jest do potwierdzenia (zapytanie rzutuje

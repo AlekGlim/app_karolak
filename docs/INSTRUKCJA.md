@@ -185,10 +185,9 @@ bez pozycji słów, dlatego szukajka działa tak:
 - pasek „← Poprzednie · Trafienie 2 z 5 · strona 3 · Następne →” przechodzi po kolejnych
   wystąpieniach; bez frazy ten sam pasek przewija strony.
 
-Dla PDF-a z warstwą tekstową (wygenerowanego cyfrowo, nie skanu) fraza jest dodatkowo
-zaznaczona na obrazie strony.
-
-Na skanie przed analizą pole szukania jest nieaktywne — nie ma jeszcze tekstu.
+Aplikacja wskazuje tylko stronę — na obrazie strony niczego nie zaznacza (także dla
+PDF-a z warstwą tekstową). Przed analizą pole szukania jest nieaktywne — nie ma
+jeszcze tekstu OCR.
 
 Szukanie jest odporne na wielkość liter, polskie znaki (`wrzesnia` znajdzie `września`)
 i łamanie linii. Szukajka najpierw rozpoznaje, czym jest fraza, i od tego zależy,
@@ -213,6 +212,27 @@ znajdzie tylko miejsce z błędem.
 | czerwony | wartość niezgodna — inna data, inna osoba albo prawdopodobny błąd OCR |
 
 Szukajka zaczyna od wartości przyjętej; do niezgodnej przechodzi się „Następne →”.
+
+### Znacznik przy polu i skok do strony
+
+Przy każdym polu model podaje stronę i krótki cytat z dokumentu (lista `zrodla`
+w wyniku). Aplikacja sprawdza, czy ten cytat naprawdę stoi w tekście OCR:
+
+| Znacznik | Znaczenie |
+|---|---|
+| `✓ s. 2` | cytat stoi na stronie 2 (jeśli model podał inną stronę, dymek to mówi — wygrywa tekst) |
+| `? s. 2` | cytat stoi na stronie 2, ale nie zawiera wartości pola — model mógł wskazać nie to miejsce |
+| `✕ brak źródła` | cytatu nie ma w tekście — sprawdź wartość na skanie |
+| `⚠ rozbieżność` | pole ma ustalenie w panelu „Do wyjaśnienia” (ma pierwszeństwo) |
+
+Dymek po najechaniu pokazuje cytat. Klik w pole skacze na stronę źródła i zaczyna
+szukajkę od trafienia na tej stronie — ta sama kwota czy miasto stoją w dokumencie
+w kilku rolach, a model wskazuje właściwą. Dla pól, których wartość nie stoi
+w dokumencie dosłownie (rodzaj, tytuł prawny, adres sklejony z kilku pól, liczba
+transz), do szukajki trafia cytat zamiast wartości.
+
+Wynik bez listy `zrodla` (zapisany w cache przed tą zmianą) pokazuje stary znacznik:
+`✓ N` / `≈ N` / `✕ brak` — liczbę trafień wartości w tekście.
 
 ---
 
@@ -241,12 +261,12 @@ kopiuj_do_wysylki.py   kopia plików z końcówką .txt do wysłania mailem (pat
 | DATY | daty liczbowe i słowne (`14 marca 2026`) |
 | WALIDACJE | PESEL, NRB, suma transz, `WZORZEC_NUMERU_WNIOSKU` |
 | SZUKANIE W TEKŚCIE OCR | szukanie frazy, warianty z rozbieżności, `wzorzec_z_odmiana`, strona dla wartości |
-| INDEKS DOKUMENTU | strony dokumentu (OCR albo warstwa tekstowa PDF), trafienia na stronach |
+| INDEKS DOKUMENTU | strony dokumentu z tekstu OCR, trafienia na stronach |
 | ROZBIEŻNOŚCI | sprawdzenie, czy wartości zgłoszone przez model stoją w tekście OCR |
 | USTALENIA | panel „Do wyjaśnienia”: `zbierz_problemy`, `POZIOM_ROZBIEZNOSCI`, `SLOWA_KLUCZOWE_POL` |
 | SCHEMATY, PROMPT I KLUCZ CACHE | `SCHEMATY`, `SZABLON_PROMPTU`, `klucz_wersji` |
 | API | `wywolaj_ocr_api`, `wywolaj_extract_api`, odpytywanie statusu, odczyt tokenu |
-| PDF | liczba stron, warstwa tekstowa, obraz strony |
+| PDF | liczba stron, obraz strony |
 | TRYB OFFLINE | atrapy hurtowni i API (`offline_*`) |
 | ŹRÓDŁA DANYCH | `zrodla()` — prawdziwe źródła (API + `data_loader.py`) albo offline |
 | ANALIZA | `Analiza`, `analizuj`: cache → OCR → ekstrakcja → zapis do cache |
@@ -507,7 +527,6 @@ w panelu ustaleń.
 | przycisk „Uruchom analizę” nieaktywny | brak tokenu albo wniosku | wpisz poprawny numer wniosku, sprawdź token |
 | pole szukania nieaktywne | skan przed analizą — nie ma jeszcze tekstu | uruchom analizę |
 | wszystkie trafienia na „stronie 1” | endpoint OCR zmienił format znacznika `PageBreak` | popraw wzorzec w `dodaj_markery_stron` (sekcja TEKST OCR) |
-| fraza nie jest zaznaczona na stronie | skan bez warstwy tekstowej (norma) albo brak `pdfplumber` | na skanach to oczekiwane — pozycję wskazuje fragment tekstu nad podglądem |
 | brak przycisku „Kopiuj” jednym kliknięciem | brak pakietu `st-copy` | `pip install st-copy`; bez niego działa zapasowy wariant z ikoną kopiowania |
 | brak logo | brak `logo_mbank.jpg` obok `app.py` | skopiuj plik |
 | `ModuleNotFoundError: No module named 'config'` (albo `helpers`) | aplikacja uruchomiona poza serwerem bez trybu offline | lokalnie uruchamiaj z `HIPOTEKA_OFFLINE=1` |

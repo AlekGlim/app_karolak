@@ -52,7 +52,7 @@
         "uzasadnienie": ""
     },
     "rodzaj_nieruchomosci": "lokal mieszkalny",
-    "wojewodztwo": "mazowieckie",
+    "wojewodztwo": "",
     "miasto": "Warszawa",
     "ulica": "Puławska",
     "numer_budynku": "17B",
@@ -75,7 +75,7 @@
     "prawa_przynalezne": [
         {
             "rodzaj": "udział w garażu wielostanowiskowym",
-            "tytul_prawny": "udział w prawie własności z prawem wyłącznego korzystania",
+            "tytul_prawny": "prawo wyłącznego korzystania",
             "oznaczenie": "MLAC/G26",
             "cena": "35 000,00 zł"
         }
@@ -144,14 +144,187 @@
     ],
     "weryfikacja_uniflow": [
         {
-            "status": "zgodne",
-            "tytul": "Zgodność pierwszego nabywcy",
-            "opis": "Adam Nowak występuje we wniosku i w umowie."
-        },
-        {
             "status": "niezgodne",
+            "pole": "nabywca_2",
             "tytul": "Niezgodność nazwiska",
             "opis": "Nazwisko drugiego nabywcy w umowie (Nowak) różni się od danych UniFlow (Kowalska)."
+        }
+    ],
+    "zrodla": [
+        {
+            "pole": "numer_umowy",
+            "strona": 1,
+            "cytat": "Repertorium A Nr 1123/2026"
+        },
+        {
+            "pole": "data_umowy",
+            "strona": 1,
+            "cytat": "Dnia czternastego marca dwa tysiące dwudziestego szóstego roku (14 marca 2026 r.)"
+        },
+        {
+            "pole": "nazwa_dewelopera",
+            "strona": 1,
+            "cytat": "spółki XYZ Development spółka z ograniczoną odpowiedzialnością z siedzibą w Warszawie"
+        },
+        {
+            "pole": "nip_dewelopera",
+            "strona": 1,
+            "cytat": "z siedzibą w Warszawie, NIP 5252525252"
+        },
+        {
+            "pole": "nabywca_1",
+            "strona": 1,
+            "cytat": "Adam Nowak, PESEL 89052112345"
+        },
+        {
+            "pole": "pesel_1",
+            "strona": 1,
+            "cytat": "Adam Nowak, PESEL 89052112345"
+        },
+        {
+            "pole": "nabywca_2",
+            "strona": 1,
+            "cytat": "Maria Nowak, PESEL 92081534567"
+        },
+        {
+            "pole": "pesel_2",
+            "strona": 1,
+            "cytat": "Maria Nowak, PESEL 92081534567"
+        },
+        {
+            "pole": "rodzaj_nieruchomosci",
+            "strona": 2,
+            "cytat": "Przedmiotem umowy jest lokal mieszkalny nr 42"
+        },
+        {
+            "pole": "miasto",
+            "strona": 2,
+            "cytat": "przy ul. Puławskiej 17B w Warszawie"
+        },
+        {
+            "pole": "ulica",
+            "strona": 2,
+            "cytat": "przy ul. Puławskiej 17B w Warszawie"
+        },
+        {
+            "pole": "numer_budynku",
+            "strona": 2,
+            "cytat": "przy ul. Puławskiej 17B w Warszawie"
+        },
+        {
+            "pole": "numer_lokalu",
+            "strona": 2,
+            "cytat": "lokal mieszkalny nr 42 w budynku"
+        },
+        {
+            "pole": "numer_dzialki",
+            "strona": 1,
+            "cytat": "stanowiącej działkę ewidencyjną nr 12/5"
+        },
+        {
+            "pole": "numer_kw",
+            "strona": 1,
+            "cytat": "prowadzi księgę wieczystą nr WA1M/00123456/7"
+        },
+        {
+            "pole": "cena_nieruchomosci",
+            "strona": 2,
+            "cytat": "Cena lokalu mieszkalnego wynosi 685 000,00 zł"
+        },
+        {
+            "pole": "laczna_wartosc_transakcji",
+            "strona": 2,
+            "cytat": "Łączna wartość transakcji wynosi 720 000,00 zł"
+        },
+        {
+            "pole": "bank_powiernika",
+            "strona": 2,
+            "cytat": "rachunek powierniczy prowadzony przez Bank Powierniczy S.A."
+        },
+        {
+            "pole": "otwarty_numer_rachunku_powierniczego",
+            "strona": 2,
+            "cytat": "o numerze 03 1090 1234 0000 0001 2345 1234"
+        },
+        {
+            "pole": "numer_rachunku_powierniczego",
+            "strona": 2,
+            "cytat": "indywidualny numer rachunku 19 1090 1234 0000 0001 9876 5432"
+        },
+        {
+            "pole": "liczba_transz",
+            "strona": 2,
+            "cytat": "Nabywcy zapłacą cenę w transzach, zgodnie z harmonogramem"
+        },
+        {
+            "pole": "termin_przeniesienia_wlasnosci",
+            "strona": 3,
+            "cytat": "przeniesienia jej na Nabywców do dnia 30 czerwca 2027 r."
+        },
+        {
+            "pole": "termin_odrebnej_wlasnosci",
+            "strona": 2,
+            "cytat": "ustanowienia odrębnej własności lokalu do dnia 31-03-2027"
+        },
+        {
+            "pole": "harmonogram_transz[1].kwota",
+            "strona": 2,
+            "cytat": "1 | 144 000,00 zł | 21-03-2026"
+        },
+        {
+            "pole": "harmonogram_transz[1].termin_platnosci",
+            "strona": 2,
+            "cytat": "1 | 144 000,00 zł | 21-03-2026"
+        },
+        {
+            "pole": "harmonogram_transz[2].kwota",
+            "strona": 2,
+            "cytat": "2 | 216 000,00 zł | 15.08.2026"
+        },
+        {
+            "pole": "harmonogram_transz[2].termin_platnosci",
+            "strona": 2,
+            "cytat": "2 | 216 000,00 zł | 15.08.2026"
+        },
+        {
+            "pole": "harmonogram_transz[3].kwota",
+            "strona": 2,
+            "cytat": "3 | 216 000,00 zł | 10.02.2027"
+        },
+        {
+            "pole": "harmonogram_transz[3].termin_platnosci",
+            "strona": 2,
+            "cytat": "3 | 216 000,00 zł | 10.02.2027"
+        },
+        {
+            "pole": "harmonogram_transz[4].kwota",
+            "strona": 2,
+            "cytat": "4 | 144 000,00 zł | 30-06-2027"
+        },
+        {
+            "pole": "harmonogram_transz[4].termin_platnosci",
+            "strona": 2,
+            "cytat": "4 | 144 000,00 zł | 30-06-2027"
+        },
+        {
+            "pole": "prawa_przynalezne[1].rodzaj",
+            "strona": 2,
+            "cytat": "udział w lokalu niemieszkalnym — garażu wielostanowiskowym"
+        },
+        {
+            "pole": "prawa_przynalezne[1].tytul_prawny",
+            "strona": 2,
+            "cytat": "z prawem do wyłącznego korzystania z miejsca postojowego"
+        },
+        {
+            "pole": "prawa_przynalezne[1].oznaczenie",
+            "strona": 2,
+            "cytat": "miejsca postojowego oznaczonego MLAC/G26"
+        },
+        {
+            "pole": "prawa_przynalezne[1].cena",
+            "strona": 2,
+            "cytat": "Cena udziału w garażu wielostanowiskowym wynosi 35 000,00 zł"
         }
     ]
 }

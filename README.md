@@ -57,12 +57,8 @@ nie po napisie: `2026-03-14` znajdzie `14 marca 2026`, a `WA1M/00123456/7`
 znajdzie `WA1M 00123456 7`. Kolory trafień: niebieski — szukana wartość,
 morski zielony — ta sama wartość w innym zapisie, czerwony — wartość niezgodna.
 
-Dla PDF-a z warstwą tekstową (wygenerowanego cyfrowo) trafienie jest
-dodatkowo zaznaczone na obrazie strony — pozycje słów czyta `pdfplumber`.
-Szukanie działa wtedy także przed analizą.
-
-W trybie offline typowy przypadek to `dev/umowa_demo_skan.pdf`,
-a `dev/umowa_demo.pdf` pokazuje wariant z warstwą tekstową.
+Obsługujemy wyłącznie wskazanie strony — na obrazie strony niczego nie
+zaznaczamy, także dla PDF-a z warstwą tekstową. Szukanie działa po analizie.
 
 ## Testy
 
