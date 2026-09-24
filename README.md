@@ -36,6 +36,7 @@ w [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).
 | `app.py`            | cała aplikacja, podzielona na sekcje z nagłówkami (spis na górze pliku) |
 | `data_loader.py`    | hurtownia: dane wniosku z UniFlow i cache wyników (tylko serwer)     |
 | `schemy/`           | schematy ekstrakcji                                                   |
+| `.streamlit/`       | kolor akcentu kontrolek Streamlita (fioletowy)                        |
 | `dev/`              | dane do trybu offline                                                 |
 | `tests/`            | testy pytest                                                          |
 | `kopiuj_do_wysylki.py` | kopia plików z końcówką `.txt` do wysłania mailem                  |
@@ -48,6 +49,11 @@ więc na tekście OCR: fraza (wpisana albo z kliknięcia w wartość pola)
 przełącza podgląd na stronę, na której występuje, a nad podglądem pokazuje
 fragment tekstu z zaznaczonym trafieniem. Znaczniki markdown i tabele
 z odpowiedzi OCR są w tym fragmencie zamieniane na czytelny tekst.
+
+Daty, kwoty i identyfikatory (PESEL, NIP, KW, rachunek) są szukane po znaczeniu,
+nie po napisie: `2026-03-14` znajdzie `14 marca 2026`, a `WA1M/00123456/7`
+znajdzie `WA1M 00123456 7`. Kolory trafień: niebieski — szukana wartość,
+morski zielony — ta sama wartość w innym zapisie, czerwony — wartość niezgodna.
 
 Dla PDF-a z warstwą tekstową (wygenerowanego cyfrowo) trafienie jest
 dodatkowo zaznaczone na obrazie strony — pozycje słów czyta `pdfplumber`.

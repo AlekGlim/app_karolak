@@ -23,6 +23,7 @@ WYMAGANE = [
     "app.py",
     "data_loader.py",
     "schemy",
+    ".streamlit",  # kolory kontrolek
     "requirements.txt",
     "README.md",
     "docs",

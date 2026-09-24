@@ -30,8 +30,8 @@ a strona wynika z najbliższego markera [STRONA_X]. Rozbieżności w dokumencie
 a Python weryfikuje, czy każda zgłoszona wartość naprawdę stoi w tekście.
 
 MOTYW: aplikacja podąża za motywem przeglądarki (jasny/ciemny). Aby to działało,
-NIE ustawiaj base="light" w .streamlit/config.toml - jeśli taki plik istnieje,
-usuń go albo usuń z niego sekcję [theme].
+NIE ustawiaj base="light" w .streamlit/config.toml. Plik ustawia tylko kolor
+akcentu kontrolek Streamlita (fioletowy) osobno dla motywu jasnego i ciemnego.
 """
 
 import base64
@@ -347,10 +347,18 @@ WZORZEC_DATY = re.compile(
     r"(\d{4})(?!\d)"
 )
 
+# Zapis zaczynający się od roku: 2000-03-22 / 2000.03.22 / 2000/03/22.
+# Oba separatory muszą być takie same — "2000-03.22" to raczej fragment
+# numeru niż data.
+WZORZEC_DATY_OD_ROKU = re.compile(
+    r"(?<![\d.,/-])(\d{4})[ ]?([-./])[ ]?(\d{1,2})[ ]?\2[ ]?(\d{1,2})(?!\d|[-./]\d)"
+)
+
 
 def znajdz_daty(ocr_text):
     """Wszystkie daty w tekście: [{"data": date, "pozycja": ..., "koniec": ...}].
 
+    Rozumie zapis od dnia (22-03-2000, 22 marca 2000) i od roku (2000-03-22).
     Pozycje odnoszą się do oryginalnego tekstu (normalizacja zdejmuje
     diakrytyki, ale nie zmienia długości). Wyrażenia, które wyglądają jak data,
     a nią nie są (31-02-2000), są pomijane.
@@ -361,19 +369,21 @@ def znajdz_daty(ocr_text):
     znorm = normalizuj_do_szukania(ocr_text)
     daty = []
 
-    for dop in WZORZEC_DATY.finditer(znorm):
-        dzien = int(dop.group(1))
-        miesiac = int(dop.group(2)) if dop.group(2) else NUMERY_MIESIECY[dop.group(3)]
-        rok = int(dop.group(4))
-
+    def dodaj(dop, rok, miesiac, dzien):
         try:
             data = date(rok, miesiac, dzien)
         except ValueError:
-            continue
-
+            return
         daty.append({"data": data, "pozycja": dop.start(), "koniec": dop.end()})
 
-    return daty
+    for dop in WZORZEC_DATY.finditer(znorm):
+        miesiac = int(dop.group(2)) if dop.group(2) else NUMERY_MIESIECY[dop.group(3)]
+        dodaj(dop, int(dop.group(4)), miesiac, int(dop.group(1)))
+
+    for dop in WZORZEC_DATY_OD_ROKU.finditer(znorm):
+        dodaj(dop, int(dop.group(1)), int(dop.group(3)), int(dop.group(4)))
+
+    return sorted(daty, key=lambda d: d["pozycja"])
 
 
 def parsuj_date(tekst):
@@ -404,18 +414,7 @@ def szukaj_daty_w_ocr(ocr_text, data):
         if wpis["data"] != data:
             continue
 
-        start, koniec = wpis["pozycja"], wpis["koniec"]
-        od = max(0, start - DLUGOSC_KONTEKSTU)
-        do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
-
-        trafienia.append({
-            "pozycja": start,
-            "strona": strona_dla_pozycji(ocr_text, start),
-            "przed": ocr_text[od:start],
-            "trafienie": ocr_text[start:koniec],
-            "po": ocr_text[koniec:do],
-            "dokladne": True,
-        })
+        trafienia.append(_trafienie(ocr_text, wpis["pozycja"], wpis["koniec"]))
 
     return trafienia
 
@@ -542,6 +541,20 @@ def czy_poprawny_numer_wniosku(numer):
 # Numery stron są deterministyczne: wartość jest szukana w tekście OCR,
 # a strona wynika z najbliższego markera [STRONA_X] przed trafieniem.
 
+def _trafienie(ocr_text, start, koniec, dokladne=True):
+    """Trafienie w kształcie wspólnym dla wszystkich rodzajów szukania."""
+    od = max(0, start - DLUGOSC_KONTEKSTU)
+    do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
+    return {
+        "pozycja": start,
+        "strona": strona_dla_pozycji(ocr_text, start),
+        "przed": ocr_text[od:start],
+        "trafienie": ocr_text[start:koniec],
+        "po": ocr_text[koniec:do],
+        "dokladne": dokladne,
+    }
+
+
 def wzorzec_z_odmiana(fraza):
     """Regex tolerujący polską odmianę: dłuższe słowa skracamy o końcówkę.
 
@@ -570,17 +583,7 @@ def szukaj_w_ocr(ocr_text, fraza):
 
     def zbierz(wzor, dokladne):
         for dop in re.finditer(wzor, znorm):
-            start, koniec = dop.span()
-            od = max(0, start - DLUGOSC_KONTEKSTU)
-            do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
-            trafienia.append({
-                "pozycja": start,
-                "strona": strona_dla_pozycji(ocr_text, start),
-                "przed": ocr_text[od:start],
-                "trafienie": ocr_text[start:koniec],
-                "po": ocr_text[koniec:do],
-                "dokladne": dokladne,
-            })
+            trafienia.append(_trafienie(ocr_text, *dop.span(), dokladne))
 
     # Słowa frazy rozdziela dowolny odstęp: w tekście OCR fraza łamie się
     # na końcu linii ("księgę\nwieczystą"), a pole z modelu ma zwykłą spację.
@@ -601,6 +604,79 @@ def szukaj_w_ocr(ocr_text, fraza):
             unikalne.append(t)
 
     return unikalne
+
+
+# Typ frazy decyduje, jak jej szukamy. Daty, kwoty i identyfikatory mają
+# w dokumencie wiele zapisów tej samej wartości (2000-03-22 / 22 marca 2000,
+# 450 000,00 / 450.000,00, WA1M/00012345/6 / WA1M 00012345 6) — szukamy ich
+# po znaczeniu, a nie po napisie. Reszta (nazwiska, adresy) dosłownie.
+
+def rozpoznaj_typ_frazy(fraza):
+    """"data", "kwota", "identyfikator" albo "tekst"."""
+    if parsuj_date(fraza):
+        return "data"
+    if kwota_z_frazy(fraza) is not None:
+        return "kwota"
+    if klucz_identyfikatora(fraza):
+        return "identyfikator"
+    return "tekst"
+
+
+# Identyfikator: ciąg liter i cyfr rozdzielony spacjami, myślnikami,
+# ukośnikami lub kropkami. Każda część ma cyfrę albo jest krótkim prefiksem
+# literowym (PL w numerze rachunku), a cyfr jest co najmniej 6 — dzięki temu
+# "Jan Kowalski" czy numer lokalu "20A" zostają zwykłym tekstem.
+MIN_CYFR_IDENTYFIKATORA = 6
+SEPARATOR_IDENTYFIKATORA = r"(?:[ \t]*[-/.][ \t]*|\s+)"
+
+
+def klucz_identyfikatora(fraza):
+    """Same litery i cyfry identyfikatora ("wa1m000123456") albo None."""
+    if fraza is None:
+        return None
+
+    czesci = re.split(SEPARATOR_IDENTYFIKATORA, normalizuj_do_szukania(fraza).strip())
+    if not all(re.fullmatch(r"[a-z0-9]+", c) for c in czesci):
+        return None
+    if not all(any(z.isdigit() for z in c) or len(c) <= 2 for c in czesci):
+        return None
+
+    klucz = "".join(czesci)
+    if sum(z.isdigit() for z in klucz) < MIN_CYFR_IDENTYFIKATORA:
+        return None
+
+    return klucz
+
+
+def wzorzec_identyfikatora(klucz):
+    """Regex dopasowujący identyfikator w każdym układzie separatorów.
+
+    Między dowolnymi dwoma znakami może stać separator albo nie. Granice
+    pilnują, żeby PESEL nie dopasował się do środka numeru rachunku zapisanego
+    w grupach ("61 1090 1014 0000 ...") — przed i po trafieniu nie może być
+    litery ani cyfry, także za pojedynczym separatorem w tej samej linii.
+    """
+    srodek = f"{SEPARATOR_IDENTYFIKATORA}?".join(re.escape(z) for z in klucz)
+    return (
+        r"(?<![a-z0-9])(?<![a-z0-9][-/.])(?<![0-9][ \t])"
+        + srodek
+        + r"(?![a-z0-9])(?![-/.][a-z0-9])(?![ \t][-/.]?[ \t]?[0-9])"
+    )
+
+
+def szukaj_identyfikatora_w_ocr(ocr_text, klucz):
+    """Trafienia identyfikatora niezależnie od spacji, myślników i ukośników.
+
+    Ten sam kształt wyniku co szukaj_w_ocr.
+    """
+    if not ocr_text or not klucz:
+        return []
+
+    znorm = normalizuj_do_szukania(ocr_text)
+    return [
+        _trafienie(ocr_text, *dop.span())
+        for dop in re.finditer(wzorzec_identyfikatora(klucz), znorm)
+    ]
 
 
 def warianty_do_szukania(fraza, potwierdzone):
@@ -634,9 +710,10 @@ def warianty_do_szukania(fraza, potwierdzone):
 def szukaj_w_ocr_z_wariantami(ocr_text, zapisy):
     """Trafienia dla kilku zapisów naraz, posortowane po pozycji w tekście.
 
-    `zapisy` w formacie z warianty_do_szukania. Każdy zapis szukamy osobno
-    przez szukaj_w_ocr, więc reguły (dosłownie, odmiana tylko jako zapas)
-    zostają te same. Rodzaj zapisu przechodzi na trafienie.
+    `zapisy` w formacie z warianty_do_szukania. Każdy zapis szukamy osobno,
+    sposobem zależnym od typu frazy (rozpoznaj_typ_frazy): data, kwota
+    i identyfikator w każdym zapisie, tekst dosłownie z odmianą jako zapasem.
+    Rodzaj zapisu przechodzi na trafienie.
 
     Gdy dwa zapisy trafią w to samo miejsce, wygrywa ten wcześniejszy na
     liście — dlatego warianty_do_szukania zwraca najpierw wartość główną,
@@ -645,20 +722,24 @@ def szukaj_w_ocr_z_wariantami(ocr_text, zapisy):
     wszystkie = []
 
     for zapis in zapisy:
-        # Kwotę szukamy wyłącznie wzorcem kwoty: łapie każdy zapis i pilnuje
-        # granic liczby. Szukanie dosłowne znalazłoby "685 000,00" także
-        # w środku "1 685 000,00".
-        grosze = kwota_z_frazy(zapis["fraza"])
-        if grosze is not None:
-            trafienia_zapisu = szukaj_kwoty_w_ocr(ocr_text, grosze)
-        else:
-            trafienia_zapisu = szukaj_w_ocr(ocr_text, zapis["fraza"])
+        fraza = zapis["fraza"]
+        typ = rozpoznaj_typ_frazy(fraza)
 
-        # fraza będąca pełną datą znajduje ją w każdym zapisie
-        # ("22-03-2000" znajdzie też "22 marca 2000") — patrz 2B
-        data = parsuj_date(zapis["fraza"])
-        if data:
-            trafienia_zapisu += szukaj_daty_w_ocr(ocr_text, data)
+        if typ == "kwota":
+            # Kwotę i identyfikator szukamy wyłącznie ich wzorcem: łapie każdy
+            # zapis i pilnuje granic liczby. Szukanie dosłowne znalazłoby
+            # "685 000,00" także w środku "1 685 000,00", a zapas z odmianą
+            # dopasowałby PESEL do dłuższego ciągu cyfr.
+            trafienia_zapisu = szukaj_kwoty_w_ocr(ocr_text, kwota_z_frazy(fraza))
+        elif typ == "identyfikator":
+            trafienia_zapisu = szukaj_identyfikatora_w_ocr(ocr_text, klucz_identyfikatora(fraza))
+        else:
+            trafienia_zapisu = szukaj_w_ocr(ocr_text, fraza)
+
+        # data znajduje się w każdym zapisie ("2000-03-22" znajdzie też
+        # "22 marca 2000"); szukanie dosłowne zostaje dla fraz z datą w środku
+        if typ == "data":
+            trafienia_zapisu += szukaj_daty_w_ocr(ocr_text, parsuj_date(fraza))
 
         for trafienie in trafienia_zapisu:
             trafienie["fraza"] = zapis["fraza"]
@@ -686,17 +767,7 @@ def szukaj_kwoty_w_ocr(ocr_text, grosze):
     trafienia = []
 
     for dop in re.finditer(wzorzec_kwoty(grosze), znorm):
-        start, koniec = dop.span()
-        od = max(0, start - DLUGOSC_KONTEKSTU)
-        do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
-        trafienia.append({
-            "pozycja": start,
-            "strona": strona_dla_pozycji(ocr_text, start),
-            "przed": ocr_text[od:start],
-            "trafienie": ocr_text[start:koniec],
-            "po": ocr_text[koniec:do],
-            "dokladne": True,
-        })
+        trafienia.append(_trafienie(ocr_text, *dop.span()))
 
     return trafienia
 
@@ -1844,16 +1915,18 @@ WYSOKOSC_PODGLADU = 800
 
 # Kolor zależy od rodzaju trafienia (patrz warianty_do_szukania): przy polu
 # z rozbieżnością widać naraz wartość przyjętą, jej inne zapisy i wartości
-# niezgodne. "kolor" dla legendy w HTML, "rgb" do rysowania na stronie.
+# niezgodne. "kolor" dla legendy w HTML, "rgb" do rysowania na stronie,
+# "obrys" do ramki wokół bieżącego trafienia.
+# Niebieski = trafienie, morski zielony = ta sama wartość w innym zapisie,
+# czerwony = wartość niezgodna. Czerwień jest zarezerwowana dla błędów.
 RODZAJE_TRAFIEN = {
-    "szukana": {"etykieta": "szukana fraza", "kolor": "#D4A900", "rgb": (255, 214, 0)},
-    "glowna": {"etykieta": "wartość przyjęta", "kolor": "#D4A900", "rgb": (255, 214, 0)},
-    "ok": {"etykieta": "inny zapis tej samej wartości", "kolor": "#1E7C34", "rgb": (40, 170, 80)},
-    "zla": {"etykieta": "wartość niezgodna", "kolor": "#C0392B", "rgb": (225, 45, 45)},
+    "szukana": {"etykieta": "szukana fraza", "kolor": "#2563EB", "rgb": (59, 130, 246), "obrys": (29, 78, 216)},
+    "glowna": {"etykieta": "wartość przyjęta", "kolor": "#2563EB", "rgb": (59, 130, 246), "obrys": (29, 78, 216)},
+    "ok": {"etykieta": "inny zapis tej samej wartości", "kolor": "#0D9488", "rgb": (20, 184, 166), "obrys": (15, 118, 110)},
+    "zla": {"etykieta": "wartość niezgodna", "kolor": "#C0392B", "rgb": (225, 45, 45), "obrys": (153, 27, 27)},
 }
 ALFA_AKTYWNEGO = 110
 ALFA_POZOSTALYCH = 45
-OBRYS_AKTYWNEGO = (196, 30, 58)
 
 
 def ustaw_fraze_szukania(wartosc):
@@ -1900,7 +1973,8 @@ def _zaznacz(obraz, trafienia_na_stronie, skala):
 
     # aktywne na końcu, żeby leżało na wierzchu
     for trafienie, aktywne in sorted(trafienia_na_stronie, key=lambda para: para[1]):
-        rgb = RODZAJE_TRAFIEN[trafienie["rodzaj"]]["rgb"]
+        rodzaj = RODZAJE_TRAFIEN[trafienie["rodzaj"]]
+        rgb = rodzaj["rgb"]
         alfa = ALFA_AKTYWNEGO if aktywne else ALFA_POZOSTALYCH
 
         for p in trafienie["prostokaty"]:
@@ -1912,7 +1986,7 @@ def _zaznacz(obraz, trafienia_na_stronie, skala):
             ]
             rysownik.rectangle(ramka, fill=rgb + (alfa,))
             if aktywne:
-                rysownik.rectangle(ramka, outline=OBRYS_AKTYWNEGO, width=3)
+                rysownik.rectangle(ramka, outline=rodzaj["obrys"], width=3)
 
     bufor = io.BytesIO()
     Image.alpha_composite(obraz, warstwa).convert("RGB").save(bufor, format="PNG")
@@ -2143,12 +2217,16 @@ logo_base64 = (
 CUSTOM_CSS = """
 <style>
     /* ---------- Motyw jasny (domyślny) ---------- */
+    /* Akcent fioletowy — czerwień zostaje wyłącznie dla błędów i ryzyk.
+       Ten sam kolor co primaryColor w .streamlit/config.toml. */
     :root {
-        --akcent: #E4032E;
-        --akcent-ciemny: #B00224;
-        --tlo-strony: #F5F6F8;
+        --akcent: #6D4FC2;
+        --akcent-ciemny: #4E3796;
+        --baner-od: #7B61D1;
+        --baner-do: #4E3796;
+        --tlo-strony: #F6F5FB;
         --tlo-karty: #FFFFFF;
-        --obramowanie: #EAEAEE;
+        --obramowanie: #E7E3F3;
         --tekst: #1F2937;
         --tekst-przygaszony: #6B7280;
         --cien: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -2165,11 +2243,13 @@ CUSTOM_CSS = """
     /* ---------- Motyw ciemny ---------- */
     @media (prefers-color-scheme: dark) {
         :root {
-            --akcent: #FF4D6A;
-            --akcent-ciemny: #E4032E;
-            --tlo-strony: #0E1117;
-            --tlo-karty: #1A1D24;
-            --obramowanie: #2E323C;
+            --akcent: #B3A0F2;
+            --akcent-ciemny: #8F76E0;
+            --baner-od: #5B43A8;
+            --baner-do: #35246F;
+            --tlo-strony: #0F0E17;
+            --tlo-karty: #1B1A26;
+            --obramowanie: #2F2C40;
             --tekst: #E8EAED;
             --tekst-przygaszony: #9BA1AC;
             --cien: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -2196,7 +2276,7 @@ CUSTOM_CSS = """
 
     /* ---------- Baner nagłówkowy ---------- */
     .banner-naglowek {
-        background: linear-gradient(135deg, var(--akcent) 0%, var(--akcent-ciemny) 100%);
+        background: linear-gradient(135deg, var(--baner-od) 0%, var(--baner-do) 100%);
         color: #FFFFFF;
         padding: 28px 32px;
         border-radius: 14px;
@@ -2531,7 +2611,7 @@ CUSTOM_CSS = """
     .kontekst-trafienia {
         background: var(--tlo-karty, #FFF);
         border: 1px solid var(--obramowanie, #E5E7EB);
-        border-left: 4px solid var(--akcent, #E4032E);
+        border-left: 4px solid var(--akcent, #6D4FC2);
         border-radius: 8px;
         padding: 10px 14px 11px;
         margin-bottom: 10px;

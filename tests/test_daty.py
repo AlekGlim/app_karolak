@@ -38,3 +38,19 @@ def test_szukaj_daty_w_ocr_zwraca_strone_i_kontekst():
     assert trafienia[0]["strona"] == 2
     assert trafienia[0]["trafienie"] == "22 marca 2000"
     assert szukaj_daty_w_ocr(ocr, date(2000, 3, 23)) == []
+
+
+@pytest.mark.parametrize("tekst", ["2000-03-22", "2000.03.22", "2000/03/22", "2000-3-22"])
+def test_zapis_od_roku(tekst):
+    assert parsuj_date(tekst) == date(2000, 3, 22)
+
+
+def test_zapis_od_roku_wymaga_tych_samych_separatorow():
+    assert znajdz_daty("2000-03.22") == []
+    assert znajdz_daty("12000-03-22") == []
+    assert znajdz_daty("2000-03-221") == []
+
+
+def test_daty_w_obu_zapisach_posortowane_po_pozycji():
+    daty = znajdz_daty("najpierw 2000-03-22, potem 23 marca 2000")
+    assert [d["data"] for d in daty] == [date(2000, 3, 22), date(2000, 3, 23)]

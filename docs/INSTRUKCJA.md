@@ -107,6 +107,7 @@ takie same. Listę kopiowanych plików zmienia się w `WYMAGANE` na początku sk
      data_loader.py.txt
      requirements.txt.txt
      README.md.txt
+     .streamlit/  config.toml.txt
      schemy/  umowa_deweloperska.json.txt
      docs/    INSTRUKCJA.md.txt
      dev/     wnioskodawcy.json.txt  wynik_umowa_deweloperska.json.txt
@@ -114,8 +115,9 @@ takie same. Listę kopiowanych plików zmienia się w `WYMAGANE` na początku sk
               generuj_umowe_demo.py.txt
    ```
 
-   Do samego działania na serwerze wystarczą `app.py`, `data_loader.py`, `requirements.txt`
-   i `schemy/`. `dev/` jest potrzebny tylko w trybie offline, `docs/` i `README.md` to opis.
+   Do samego działania na serwerze wystarczą `app.py`, `data_loader.py`, `requirements.txt`,
+   `schemy/` i `.streamlit/` (kolory kontrolek; katalog zaczyna się od kropki — w Windowsie
+   utwórz go w wierszu poleceń: `mkdir .streamlit`). `dev/` jest potrzebny tylko w trybie offline, `docs/` i `README.md` to opis.
 
 2. Usuń końcówkę `.txt` z nazw — **tylko jedną, ostatnią** (`requirements.txt.txt` →
    `requirements.txt`). Ręcznie albo jednym poleceniem w katalogu `hipoteka_ai`:
@@ -189,16 +191,25 @@ zaznaczona na obrazie strony.
 Na skanie przed analizą pole szukania jest nieaktywne — nie ma jeszcze tekstu.
 
 Szukanie jest odporne na wielkość liter, polskie znaki (`wrzesnia` znajdzie `września`)
-i łamanie linii. Daty i kwoty są szukane w każdym zapisie: `14-03-2026` znajdzie też
-`14 marca 2026`, a `685 000,00 zł` znajdzie `685.000,00`. Gdy dosłownie nic nie ma,
-szukajka próbuje odmiany (`Warszawa` → `w Warszawie`) i oznacza to „forma odmieniona”.
+i łamanie linii. Szukajka najpierw rozpoznaje, czym jest fraza, i od tego zależy,
+jak jej szuka:
+
+| Fraza | Szukana | Przykład |
+|---|---|---|
+| data | w każdym zapisie, także od roku | `2026-03-14` znajdzie `14 marca 2026` i `14.03.2026` |
+| kwota | w każdym zapisie | `685 000,00 zł` znajdzie `685.000,00` |
+| identyfikator (co najmniej 6 cyfr: PESEL, NIP, KW, rachunek) | bez względu na spacje, myślniki i ukośniki | `WA1M/00123456/7` znajdzie `WA1M 00123456 7`; PESEL nie trafi w środek numeru rachunku |
+| cała reszta | dosłownie, a gdy nic nie ma — z odmianą | `Warszawa` → `w Warszawie` („forma odmieniona”) |
+
+Zapis z błędem OCR (`WA1M/0O123456/7`, z literą O) jest szukany tak, jak go wpisano —
+znajdzie tylko miejsce z błędem.
 
 **Kolory** przy polu z rozbieżnością (np. dwie różne daty umowy w dokumencie):
 
 | Kolor | Znaczenie |
 |---|---|
-| żółty | wartość przyjęta przez model |
-| zielony | ta sama wartość zapisana inaczej (`14 marca 2026` zamiast `14-03-2026`) |
+| niebieski | szukana fraza albo wartość przyjęta przez model |
+| morski zielony | ta sama wartość zapisana inaczej (`14 marca 2026` zamiast `14-03-2026`) |
 | czerwony | wartość niezgodna — inna data, inna osoba albo prawdopodobny błąd OCR |
 
 Szukajka zaczyna od wartości przyjętej; do niezgodnej przechodzi się „Następne →”.
@@ -369,7 +380,9 @@ Wszystko w `app.py`, sekcja USTALENIA:
 
 | Co zmienić | Gdzie |
 |---|---|
-| kolory trafień (żółty / zielony / czerwony) i ich opisy w legendzie | sekcja PANEL DOKUMENTU, `RODZAJE_TRAFIEN` |
+| kolory trafień (niebieski / morski zielony / czerwony) i ich opisy w legendzie | sekcja PANEL DOKUMENTU, `RODZAJE_TRAFIEN` |
+| jak rozpoznawany jest typ frazy (data, kwota, identyfikator, tekst) | sekcja SZUKANIE, `rozpoznaj_typ_frazy` |
+| co uznajemy za identyfikator (np. minimalna liczba cyfr) | sekcja SZUKANIE, `klucz_identyfikatora`, `MIN_CYFR_IDENTYFIKATORA` |
 | ile tekstu pokazuje karta fragmentu | sekcja PANEL DOKUMENTU, `_fragment` (liczba `150`) |
 | wysokość podglądu strony | sekcja PANEL DOKUMENTU, `WYSOKOSC_PODGLADU` |
 | jak czyszczony jest tekst OCR (tabele, komentarze, nagłówki) | sekcja TEKST OCR, `tekst_do_wyswietlenia` |
@@ -383,13 +396,19 @@ tego zrobić zwykłym przypisaniem po wyrenderowaniu pola tekstowego — Streaml
 ### 3.7. Wygląd
 
 - **Kolory i style** — `app.py`, stała `CUSTOM_CSS`. Kolory są zmiennymi CSS na górze
-  (`--akcent`, `--tlo-karty`, …) z osobnym wariantem dla motywu ciemnego — zmieniaj oba.
+  (`--akcent`, `--baner-od`, `--tlo-karty`, …) z osobnym wariantem dla motywu ciemnego —
+  zmieniaj oba. Akcent jest fioletowy; czerwień jest zarezerwowana dla błędów i ryzyk.
+- **Kolor kontrolek Streamlita** (pole szukania, przełączniki, zakładki, spinner) —
+  `.streamlit/config.toml`, `primaryColor` w `[theme.light]` i `[theme.dark]`. Trzymaj go
+  zgodnie z `--akcent` w `CUSTOM_CSS`. Bez tego pliku kontrolki będą czerwone.
 - **Wysokość prawej kolumny** — `app.py`, `sekcja_akcja_i_kluczowe_dane`,
   `st.container(height=900)`. Przy zmianie dopasuj `WYSOKOSC_PODGLADU` (sekcja PANEL DOKUMENTU),
   żeby kolumny kończyły się w podobnej linii.
 - **Nagłówek** — `banner_naglowek` w `app.py`.
 - Aplikacja podąża za motywem przeglądarki. Nie ustawiaj `base="light"` w
   `.streamlit/config.toml`.
+- `.streamlit/config.toml` jest czytany z katalogu, z którego uruchamiasz
+  `streamlit run app.py` — uruchamiaj aplikację z katalogu projektu.
 
 ### 3.8. Hurtownia
 

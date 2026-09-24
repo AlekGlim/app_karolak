@@ -1,0 +1,12 @@
+# Kolor akcentu kontrolek Streamlita (pole wyszukiwania, przyciski, spinner,
+# zakładki) — ten sam co --akcent w CUSTOM_CSS w app.py. Bez tego pliku
+# kontrolki byłyby domyślnie czerwone, a czerwień w aplikacji oznacza błędy.
+#
+# Nie ustawiaj tu base = "light" ani "dark" — aplikacja ma podążać za motywem
+# przeglądarki.
+
+[theme.light]
+primaryColor = "#6D4FC2"
+
+[theme.dark]
+primaryColor = "#B3A0F2"
