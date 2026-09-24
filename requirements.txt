@@ -1,0 +1,10 @@
+streamlit
+pandas
+requests
+pypdfium2
+pillow
+# pozycje słów do podświetlania frazy na stronie; bez pakietu szukajka
+# wskazuje tylko stronę i fragment tekstu
+pdfplumber
+# przycisk "Kopiuj do UniFlow" jednym kliknięciem (opcjonalny)
+st-copy

@@ -28,10 +28,20 @@ Numer wniosku: `KHB1553044`, dokument: `dev/umowa_demo.pdf`.
 | `stan.py`        | stan sesji — analiza przypisana do pary (dokument, numer wniosku)  |
 | `ustawienia.py`  | adresy, ścieżki, limity czasu (nadpisywalne zmiennymi środowiska)  |
 | `core/`          | czysta logika bez Streamlita: szukanie, daty, kwoty, walidacje     |
-| `services/`      | hurtownia, API, przebieg analizy, tryb offline                     |
+| `services/`      | hurtownia, API, odczyt PDF, przebieg analizy, tryb offline         |
+| `ui/`            | widoki wydzielone z app.py (panel dokumentu z szukajką)            |
 | `schemy/`        | schematy ekstrakcji                                                |
 | `dev/`           | dane do trybu offline                                              |
 | `tests/`         | testy pytest                                                       |
+
+## Szukajka
+
+Fraza (wpisana albo z kliknięcia w wartość pola) jest zaznaczana na stronie
+dokumentu. Pozycje słów pochodzą z warstwy tekstowej PDF (`pdfplumber`).
+Skan nie ma warstwy tekstowej — wtedy szukajka po analizie korzysta z tekstu
+OCR: przełącza na właściwą stronę i pokazuje fragment tekstu, ale nie
+zaznacza frazy na obrazie. Pełne zaznaczanie na skanach wymaga pozycji słów
+z endpointu OCR (`core/indeks.py`, funkcja `strona_ze_slow`).
 
 ## Testy
 

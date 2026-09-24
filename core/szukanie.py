@@ -7,7 +7,7 @@ a strona wynika z najbliższego markera [STRONA_X] przed trafieniem.
 import re
 
 from core.daty import parsuj_date, szukaj_daty_w_ocr
-from core.kwoty import kwota_na_grosze, wzorzec_kwoty
+from core.kwoty import kwota_na_grosze, kwota_z_frazy, wzorzec_kwoty
 from core.tekst import (
     DLUGOSC_KONTEKSTU,
     normalizuj_do_porownania,
@@ -117,7 +117,14 @@ def szukaj_w_ocr_z_wariantami(ocr_text, zapisy):
     wszystkie = []
 
     for zapis in zapisy:
-        trafienia_zapisu = szukaj_w_ocr(ocr_text, zapis["fraza"])
+        # Kwotę szukamy wyłącznie wzorcem kwoty: łapie każdy zapis i pilnuje
+        # granic liczby. Szukanie dosłowne znalazłoby "685 000,00" także
+        # w środku "1 685 000,00".
+        grosze = kwota_z_frazy(zapis["fraza"])
+        if grosze is not None:
+            trafienia_zapisu = szukaj_kwoty_w_ocr(ocr_text, grosze)
+        else:
+            trafienia_zapisu = szukaj_w_ocr(ocr_text, zapis["fraza"])
 
         # fraza będąca pełną datą znajduje ją w każdym zapisie
         # ("22-03-2000" znajdzie też "22 marca 2000") — patrz 2B
@@ -137,6 +144,33 @@ def szukaj_w_ocr_z_wariantami(ocr_text, zapisy):
             unikalne.append(t)
 
     return unikalne
+
+
+def szukaj_kwoty_w_ocr(ocr_text, grosze):
+    """Trafienia danej kwoty w tekście OCR — w każdym zapisie.
+
+    Ten sam kształt wyniku co szukaj_w_ocr.
+    """
+    if not ocr_text:
+        return []
+
+    znorm = normalizuj_do_szukania(ocr_text)
+    trafienia = []
+
+    for dop in re.finditer(wzorzec_kwoty(grosze), znorm):
+        start, koniec = dop.span()
+        od = max(0, start - DLUGOSC_KONTEKSTU)
+        do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
+        trafienia.append({
+            "pozycja": start,
+            "strona": strona_dla_pozycji(ocr_text, start),
+            "przed": ocr_text[od:start],
+            "trafienie": ocr_text[start:koniec],
+            "po": ocr_text[koniec:do],
+            "dokladne": True,
+        })
+
+    return trafienia
 
 
 def strona_dla_wartosci(ocr_text, wartosc, potwierdzone=None, rodzaj=None):

@@ -76,3 +76,20 @@ def wzorzec_kwoty(grosze):
     ulamek = r"(?:,00)?" if gr == 0 else f",{gr:02d}"
 
     return r"(?<![\d,.])(?<!\d[ .])" + calkowita + ulamek + r"(?!\d|,\d|[ .]\d{3})"
+
+
+# Zapis, który na pewno jest kwotą: z separatorem tysięcy albo z groszami.
+# Same cyfry ("2026", PESEL, numer działki) kwotą nie są.
+WZORZEC_ZAPISU_KWOTY = re.compile(r"\d{1,3}(?:[ .]\d{3})+(?:,\d{1,2})?|\d+,\d{1,2}")
+
+
+def kwota_z_frazy(tekst):
+    """Grosze, gdy fraza wygląda na kwotę; w przeciwnym razie None."""
+    if tekst is None:
+        return None
+
+    czysty = re.sub(r"(?i)\s*(?:z[łl]|pln)\.?\s*$", "", str(tekst).strip())
+    if not WZORZEC_ZAPISU_KWOTY.fullmatch(czysty):
+        return None
+
+    return kwota_na_grosze(czysty)

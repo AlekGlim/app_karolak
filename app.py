@@ -26,8 +26,6 @@ NIE ustawiaj base="light" w .streamlit/config.toml - jeśli taki plik istnieje,
 usuń go albo usuń z niego sekcję [theme].
 """
 
-import tempfile
-from pathlib import Path
 import html
 import base64
 import streamlit as st
@@ -36,9 +34,9 @@ import pandas as pd
 import stan
 from services import zrodla
 from services.analiza import analizuj
+from ui.dokument import panel_dokumentu, ustaw_fraze_szukania
 from ustawienia import OFFLINE, PLIK_LOGO, PLIK_TOKENU
 from core.rozbieznosci import zweryfikuj_warianty
-from core.szukanie import szukaj_w_ocr_z_wariantami, warianty_do_szukania
 from core.ustalenia import problemy_wg_pola, stan_sekcji, zbierz_problemy
 from core.walidacje import (
     czy_poprawny_numer_wniosku,
@@ -76,8 +74,6 @@ st.set_page_config(
     layout="wide",
 )
 
-if "wybrana_strona_pdf" not in st.session_state:
-    st.session_state["wybrana_strona_pdf"] = 1
 
 # =====================================================================
 # STYLE - kolory jako zmienne CSS, z osobnym wariantem dla motywu ciemnego
@@ -326,6 +322,12 @@ CUSTOM_CSS = """
         background-color: var(--tlo-karty);
     }
     
+    div.stButton > button:first-child:disabled {
+        opacity: 0.45;
+        border-color: var(--obramowanie);
+        color: var(--tekst-przygaszony);
+    }
+
     div.stButton > button:first-child:focus-visible {
         outline: 2px solid var(--akcent);
         outline-offset: 2px;
@@ -438,12 +440,20 @@ CUSTOM_CSS = """
         margin-bottom: 14px;
     }
 
-    /* --- szukajka: nawigacja i bieżące trafienie --- */
+    /* --- panel dokumentu: szukajka i nawigacja --- */
+    .pasek-nawigacji {
+        color: var(--tekst-przygaszony, #6B7280);
+        font-size: 0.86rem;
+        text-align: center;
+        padding-top: 8px;
+        white-space: nowrap;
+    }
+    .pasek-nawigacji b { color: var(--tekst, #1F2937); }
     .legenda-trafien {
         display: flex;
         flex-wrap: wrap;
         gap: 14px;
-        margin: 6px 0 8px;
+        margin: 0 0 8px;
         font-size: 0.76rem;
         color: var(--tekst-przygaszony, #6B7280);
     }
@@ -453,56 +463,29 @@ CUSTOM_CSS = """
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        margin-right: 4px;
+        margin-right: 6px;
+        vertical-align: middle;
     }
-    .licznik-trafien {
-        text-align: center;
-        font-size: 0.84rem;
-        font-weight: 700;
-        color: var(--tekst, #1F2937);
-        padding-top: 6px;
-    }
-    .biezace-trafienie {
-        background: var(--tlo-karty, #FFF);
-        border: 1px solid var(--obramowanie, #E5E7EB);
-        border-left: 4px solid #2C3E50;
-        border-radius: 8px;
-        padding: 12px 15px;
-        margin-bottom: 8px;
-        font-size: 0.86rem;
-        line-height: 1.6;
-        color: var(--tekst, #1F2937);
-    }
-    .biezace-slowo {
-        font-size: 1.05rem;
-        font-weight: 800;
-        margin: 2px 0 7px;
-        word-break: break-word;
-    }
-    .fragment-ocr.biezacy {
-        box-shadow: 0 0 0 2px var(--akcent, #E4032E) inset;
-    }
-
-    /* --- fragmenty z szukajki --- */
-    .fragment-ocr {
+    /* fragment trafienia na stronie skanu, której nie da się podświetlić */
+    .kontekst-trafienia {
         background: var(--tlo-karty, #FFF);
         border: 1px solid var(--obramowanie, #E5E7EB);
         border-left: 3px solid var(--akcent, #E4032E);
         border-radius: 8px;
-        padding: 11px 15px;
-        margin-bottom: 6px;
-        font-size: 0.86rem;
-        line-height: 1.6;
+        padding: 9px 13px;
+        margin-bottom: 8px;
+        font-size: 0.84rem;
+        line-height: 1.55;
         color: var(--tekst, #1F2937);
     }
     .fragment-meta {
         color: var(--tekst-przygaszony, #6B7280);
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        margin-bottom: 5px;
+        margin-bottom: 4px;
     }
-    .fragment-ocr mark {
+    .kontekst-trafienia mark {
         background: #FEF08A;
         color: #1F2937;
         padding: 1px 3px;
@@ -554,109 +537,16 @@ st.markdown(
 )
 
 
-WYSOKOSC_PODGLADU = 900
 
 
 # =====================================================================
 # PODGLĄD PDF
 # =====================================================================
 
-def zapisz_pdf_tymczasowo(plik_bajty, nazwa_pliku):
-    """Zapisuje PDF do pliku tymczasowego (raz na dokument) i zwraca ścieżkę."""
-    klucz = f"tmp_pdf_{nazwa_pliku}_{len(plik_bajty)}"
-    if klucz in st.session_state and Path(st.session_state[klucz]).exists():
-        return Path(st.session_state[klucz])
-
-    katalog = Path(tempfile.gettempdir()) / "hipoteka_ai_podglad"
-    katalog.mkdir(exist_ok=True)
-    sciezka = katalog / nazwa_pliku
-    sciezka.write_bytes(plik_bajty)
-
-    st.session_state[klucz] = str(sciezka)
-    return sciezka
 
 
-def podglad_przez_obrazki(plik_bajty, wysokosc):
-    """Renderuje strony PDF jako obrazki. Działa w każdej przeglądarce.
-
-    Wymaga: pip install pypdfium2
-    """
-    try:
-        import pypdfium2 as pdfium
-    except ImportError:
-        return False
-
-    import io
-
-    dokument = pdfium.PdfDocument(plik_bajty)
-    liczba_stron = len(dokument)
-
-    numer = st.session_state.get(
-        "wybrana_strona_pdf",
-        1
-    )
 
 
-    col1, col2, col3 = st.columns([1, 14, 1])
-
-    with col1:
-        if st.button(
-            "←",
-            disabled=(numer <= 1),
-            key="pdf_prev"
-        ):
-            st.session_state["wybrana_strona_pdf"] = numer - 1
-            st.rerun()
-
-    with col2:
-        st.markdown(
-            f"<div style='text-align:center;'>Strona {numer} z {liczba_stron}</div>",
-            unsafe_allow_html=True
-        )
-
-    with col3:
-        if st.button(
-            "→",
-            disabled=(numer >= liczba_stron),
-            key="pdf_next"
-        ):
-            st.session_state["wybrana_strona_pdf"] = numer + 1
-            st.rerun()
-
-    numer = max(
-        1,
-        min(numer, liczba_stron)
-    )
-    st.session_state["wybrana_strona_pdf"] = numer
-
-    strona = dokument[numer - 1]
-
-    obrazek = strona.render(scale=2).to_pil()
-    bufor = io.BytesIO()
-    obrazek.save(bufor, format="PNG")
-
-    with st.container(height=wysokosc, border=True):
-        st.image(bufor.getvalue(), use_container_width=True)
-
-    dokument.close()
-    return True
-
-
-def pokaz_podglad_pdf(
-    plik_bajty,
-    nazwa_pliku,
-    wysokosc=WYSOKOSC_PODGLADU
-):
-
-    if podglad_przez_obrazki(
-        plik_bajty,
-        wysokosc
-    ):
-        return
-
-    st.warning(
-        "Brak renderera PDF"
-    )
 
 # =====================================================================
 # PANEL BOCZNY
@@ -861,20 +751,6 @@ def sekcja_upload_widget():
     return st.file_uploader("Wybierz plik PDF", type=["pdf"],  label_visibility="collapsed")
 
 
-def sekcja_podglad_dokumentu(plik_bajty, nazwa_pliku):
-    st.markdown('<p class="naglowek-sekcji">📄 Podgląd Dokumentu</p>', unsafe_allow_html=True)
-    rozmiar_kb = len(plik_bajty) / 1024
-    st.markdown(
-        f'<div class="info-pliku">Plik: <b>{nazwa_pliku}</b> · {rozmiar_kb:.0f} KB</div>',
-        unsafe_allow_html=True,
-    )
-    pokaz_podglad_pdf(plik_bajty, nazwa_pliku)
-    st.download_button(
-        "⬇ Pobierz plik",
-        data=plik_bajty,
-        file_name=nazwa_pliku,
-        mime="application/pdf",
-    )
 
 
 # =====================================================================
@@ -1002,240 +878,20 @@ def karta(tytul, wiersze):
 # zgłoszona wartość naprawdę stoi w tekście.
 
 
-def ustaw_fraze_szukania(wartosc):
-    """Callback kliknięcia — wkleja wartość do pola szukajki.
-
-    Musi to być callback: widget text_input ma własny klucz w session_state
-    i po pierwszym renderze ignoruje parametr `value`. Callbacki wykonują się
-    PRZED ponownym uruchomieniem skryptu, więc ustawiona tu wartość zdąży
-    trafić do widgetu.
-    """
-    st.session_state["fraza_ocr"] = str(wartosc)
 
 
-def panel_szukajki(ocr_text, potwierdzone=None):
-    """Szukajka w tekście OCR ze skokiem do strony.
-
-    Nie podświetla frazy na skanie — to wymagałoby koordynatów z OCR.
-    Pokazuje fragment tekstu z kontekstem i pozwala przeskoczyć na stronę,
-    na której fraza występuje.
-
-    `potwierdzone` to wynik zweryfikuj_warianty (sekcja 2A). Gdy wpisana fraza
-    jest jednym z zapisów pola-identyfikatora, szukamy od razu wszystkich jego
-    zapisów — inaczej "123" nie znajdzie strony, na której OCR przeczytał "I23".
-    """
-    if not ocr_text:
-        return
-
-    st.markdown(
-        '<p class="naglowek-sekcji">🔍 Szukaj w dokumencie</p>',
-        unsafe_allow_html=True,
-    )
-
-    st.session_state.setdefault("fraza_ocr", "")
-
-    fraza = st.text_input(
-        "Szukana fraza",
-        key="fraza_ocr",
-        placeholder="np. numer księgi wieczystej, nazwisko, kwota",
-        label_visibility="collapsed",
-    )
-
-    if not fraza.strip():
-        return
-
-    zapisy = warianty_do_szukania(fraza, potwierdzone)
-    trafienia = szukaj_w_ocr_z_wariantami(ocr_text, zapisy)
-
-    if len(zapisy) > 1:
-        st.caption(
-            "Szukam też innych zapisów tego samego pola: "
-            + ", ".join(f"`{z['fraza']}`" for z in zapisy[1:])
-        )
-
-    if not trafienia:
-        st.warning(
-            f"Nie znaleziono „{fraza}” w tekście OCR. "
-            "Wartość może być błędnie odczytana albo zapisana inaczej."
-        )
-        return
-
-    trafienia = trafienia[:20]
-
-    # Numer aktualnego trafienia trzymamy w session_state, bo przeżywa
-    # przeładowanie skryptu. Zmiana frazy zeruje licznik — inaczej po wpisaniu
-    # nowej frazy zostalibyśmy na trafieniu nr 7, którego już nie ma.
-    if st.session_state.get("szukajka_ostatnia_fraza") != fraza:
-        st.session_state["szukajka_ostatnia_fraza"] = fraza
-        st.session_state["szukajka_nr"] = 0
-
-    numer = min(st.session_state.get("szukajka_nr", 0), len(trafienia) - 1)
-    biezace = trafienia[numer]
-
-    pokaz_legende_trafien(trafienia)
-    pokaz_nawigacje_trafien(numer, len(trafienia))
-    pokaz_biezace_trafienie(biezace, numer, len(trafienia))
-    pokaz_liste_trafien(trafienia, numer)
 
 
-def pokaz_legende_trafien(trafienia):
-    """Legenda kolorów — tylko dla rodzajów obecnych w wynikach.
-
-    Przy zwykłym szukaniu jest jeden rodzaj i legenda nic nie wnosi, więc
-    jej nie pokazujemy.
-    """
-    obecne = []
-    for trafienie in trafienia:
-        if trafienie["rodzaj"] not in obecne:
-            obecne.append(trafienie["rodzaj"])
-
-    if len(obecne) < 2:
-        return
-
-    czesci = []
-    for rodzaj in obecne:
-        opis = RODZAJE_TRAFIEN[rodzaj]
-        czesci.append(
-            f'<span class="legenda-wpis">'
-            f'<span class="legenda-kropka" style="background:{opis["kolor"]}"></span>'
-            f'{opis["etykieta"]}'
-            f'</span>'
-        )
-
-    st.markdown(
-        f'<div class="legenda-trafien">{"".join(czesci)}</div>',
-        unsafe_allow_html=True,
-    )
 
 
-def przewin_trafienie(o_ile, ostatni):
-    """Callback strzałek — przewija licznik trafień, bez zapętlania."""
-    numer = st.session_state.get("szukajka_nr", 0) + o_ile
-    st.session_state["szukajka_nr"] = max(0, min(numer, ostatni))
 
 
-def pokaz_nawigacje_trafien(numer, ile):
-    """Strzałki i licznik — analityk przechodzi po trafieniach po kolei."""
-    kol_wstecz, kol_licznik, kol_dalej = st.columns([1, 3, 1])
-
-    with kol_wstecz:
-        st.button(
-            "◀",
-            key="szukajka_wstecz",
-            disabled=(numer == 0),
-            use_container_width=True,
-            on_click=przewin_trafienie,
-            args=(-1, ile - 1),
-        )
-
-    with kol_licznik:
-        st.markdown(
-            f'<div class="licznik-trafien">{numer + 1} z {ile}</div>',
-            unsafe_allow_html=True,
-        )
-
-    with kol_dalej:
-        st.button(
-            "▶",
-            key="szukajka_dalej",
-            disabled=(numer == ile - 1),
-            use_container_width=True,
-            on_click=przewin_trafienie,
-            args=(1, ile - 1),
-        )
 
 
-def pokaz_biezace_trafienie(trafienie, numer, ile):
-    """Aktualne trafienie na wierzchu: co to za słowo, gdzie stoi, jakiego rodzaju.
-
-    Docelowo (gdy OCR zacznie zwracać koordynaty) to samo trafienie będzie
-    podświetlane na skanie w tym samym kolorze. Na razie kolorujemy tylko
-    tekst — ramka w kolorze rodzaju i nazwa rodzaju w nagłówku.
-    """
-    opis = RODZAJE_TRAFIEN[trafienie["rodzaj"]]
-
-    opis_strony = (
-        f"strona {trafienie['strona']}"
-        if trafienie["strona"]
-        else "strona nieznana"
-    )
-
-    dopisek = "" if trafienie["dokladne"] else " · forma odmieniona"
-
-    st.markdown(
-        f'<div class="biezace-trafienie" style="border-left-color:{opis["kolor"]}">'
-        f'<div class="fragment-meta">'
-        f'<span class="legenda-kropka" style="background:{opis["kolor"]}"></span>'
-        f'{opis["etykieta"]} · {opis_strony}{dopisek}'
-        f'</div>'
-        f'<div class="biezace-slowo" style="color:{opis["kolor"]}">'
-        f'{trafienie["trafienie"]}'
-        f'</div>'
-        f'…{trafienie["przed"]}'
-        f'<mark style="background:{opis["kolor"]}22">{trafienie["trafienie"]}</mark>'
-        f'{trafienie["po"]}…'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    if trafienie["strona"]:
-        if st.button(
-            f"Pokaż stronę {trafienie['strona']}",
-            key="skok_biezace",
-            use_container_width=True,
-        ):
-            st.session_state["wybrana_strona_pdf"] = trafienie["strona"]
-            st.rerun()
 
 
-def ustaw_numer_trafienia(numer):
-    """Callback kliknięcia w pozycję listy — przeskok wprost do trafienia."""
-    st.session_state["szukajka_nr"] = numer
 
 
-def pokaz_liste_trafien(trafienia, biezacy):
-    """Pozostałe trafienia — przegląd całości bez klikania strzałkami.
-
-    Brak markerów stron oznacza tekst z cache zapisany przed ich wprowadzeniem.
-    """
-    if all(t["strona"] is None for t in trafienia):
-        st.caption(
-            "Tekst OCR nie zawiera znaczników stron — skok do strony niedostępny. "
-            "Uruchom analizę ponownie, aby je dodać."
-        )
-
-    with st.container(height=240, border=True):
-        for indeks, trafienie in enumerate(trafienia):
-            opis = RODZAJE_TRAFIEN[trafienie["rodzaj"]]
-
-            opis_strony = (
-                f"strona {trafienie['strona']}"
-                if trafienie["strona"]
-                else "strona nieznana"
-            )
-
-            klasa = "fragment-ocr biezacy" if indeks == biezacy else "fragment-ocr"
-
-            st.markdown(
-                f'<div class="{klasa}" style="border-left-color:{opis["kolor"]}">'
-                f'<div class="fragment-meta">'
-                f'<span class="legenda-kropka" style="background:{opis["kolor"]}"></span>'
-                f'{indeks + 1} z {len(trafienia)} · {opis_strony}'
-                f'</div>'
-                f'…{trafienie["przed"]}'
-                f'<mark style="background:{opis["kolor"]}22">{trafienie["trafienie"]}</mark>'
-                f'{trafienie["po"]}…'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            if indeks != biezacy:
-                st.button(
-                    "Pokaż to trafienie",
-                    key=f"wybierz_trafienie_{indeks}",
-                    on_click=ustaw_numer_trafienia,
-                    args=(indeks,),
-                )
 
 
 def potwierdzone_rozbieznosci(analiza):
@@ -1253,15 +909,6 @@ def potwierdzone_rozbieznosci(analiza):
     return potwierdzone
 
 
-# Rodzaje trafień — określają kolor w szukajce. Gdy OCR zacznie zwracać
-# koordynaty słów, ten sam rodzaj posłuży do kolorowania tekstu na skanie;
-# dlatego rodzaj jest przypisany do pojedynczego trafienia, nie do całej listy.
-RODZAJE_TRAFIEN = {
-    "szukana": {"etykieta": "szukana fraza", "kolor": "#2C3E50"},
-    "glowna": {"etykieta": "wartość przyjęta", "kolor": "#2C3E50"},
-    "ok": {"etykieta": "inny zapis tej samej wartości", "kolor": "#1E7C34"},
-    "zla": {"etykieta": "wartość niezgodna", "kolor": "#C0392B"},
-}
 
 
 def etykieta_sekcji(ikona, nazwa, klucze, wynik, problemy):
@@ -2213,16 +1860,15 @@ def zakladka_umowa_deweloperska(
 
     with col_podglad:
 
-        # Szukajka nad dokumentem — analityk wpisuje frazę zanim otworzy
-        # pełny podgląd i od razu widzi, na której stronie szukać.
-        panel_szukajki(
+        # Szukajka nad dokumentem, trafienie zaznaczone na stronie.
+        # Przed analizą szuka w warstwie tekstowej PDF, po analizie
+        # dochodzi tekst OCR (strony skanu) i warianty z rozbieżności.
+        panel_dokumentu(
+            bajty_pdf,
+            pdf_hash,
+            nazwa_pliku,
             analiza.ocr_text if analiza else "",
             potwierdzone
-        )
-
-        sekcja_podglad_dokumentu(
-            bajty_pdf,
-            nazwa_pliku
         )
 
     with col_dane:
