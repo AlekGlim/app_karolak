@@ -1,20 +1,76 @@
 {
-    "numer_umowy": "Repertorium A Nr 1123/2026",
-    "data_umowy": "14-03-2026",
-    "nazwa_dewelopera": "XYZ Development spółka z ograniczoną odpowiedzialnością",
-    "nip_dewelopera": "5252525252",
-    "nabywca_1": "Adam Nowak",
-    "pesel_1": "89052112345",
-    "nabywca_2": "Maria Nowak",
-    "pesel_2": "92081534567",
+    "numer_umowy": {
+        "wartosc_glowna": "Repertorium A Nr 1123/2026",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "data_umowy": {
+        "wartosc_glowna": "2026-03-14",
+        "wartosci_ok": [
+            "14 marca 2026"
+        ],
+        "wartosci_zle": [
+            "15 marca 2026"
+        ],
+        "uzasadnienie": "W komparycji 14 marca 2026 r., na końcu aktu 15 marca 2026 r."
+    },
+    "nazwa_dewelopera": {
+        "wartosc_glowna": "XYZ Development spółka z ograniczoną odpowiedzialnością",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "nip_dewelopera": {
+        "wartosc_glowna": "5252525252",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "nabywca_1": {
+        "wartosc_glowna": "Adam Nowak",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "pesel_1": {
+        "wartosc_glowna": "89052112345",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "nabywca_2": {
+        "wartosc_glowna": "Maria Nowak",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "pesel_2": {
+        "wartosc_glowna": "92081534567",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
     "rodzaj_nieruchomosci": "lokal mieszkalny",
     "wojewodztwo": "mazowieckie",
     "miasto": "Warszawa",
     "ulica": "Puławska",
     "numer_budynku": "17B",
     "numer_lokalu": "42",
-    "numer_dzialki": "12/5",
-    "numer_kw": "WA1M/00123456/7",
+    "numer_dzialki": {
+        "wartosc_glowna": "12/5",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "numer_kw": {
+        "wartosc_glowna": "WA1M/00123456/7",
+        "wartosci_ok": [],
+        "wartosci_zle": [
+            "WA1M/0O123456/7"
+        ],
+        "uzasadnienie": "W § 6 litera O zamiast zera — prawdopodobnie błąd odczytu."
+    },
     "cena_nieruchomosci": "685 000,00 zł",
     "prawa_przynalezne": [
         {
@@ -26,17 +82,57 @@
     ],
     "laczna_wartosc_transakcji": "720 000,00 zł",
     "bank_powiernika": "Bank Powierniczy S.A.",
-    "otwarty_numer_rachunku_powierniczego": "03 1090 1234 0000 0001 2345 1234",
-    "numer_rachunku_powierniczego": "19 1090 1234 0000 0001 9876 5432",
+    "otwarty_numer_rachunku_powierniczego": {
+        "wartosc_glowna": "03 1090 1234 0000 0001 2345 1234",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "numer_rachunku_powierniczego": {
+        "wartosc_glowna": "19 1090 1234 0000 0001 9876 5432",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
     "liczba_transz": "4",
     "laczna_suma_harmonogramu": "720 000,00 zł",
-    "termin_przeniesienia_wlasnosci": "30-06-2027",
-    "termin_odrebnej_wlasnosci": "31-03-2027",
+    "termin_przeniesienia_wlasnosci": {
+        "wartosc_glowna": "2027-06-30",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
+    "termin_odrebnej_wlasnosci": {
+        "wartosc_glowna": "2027-03-31",
+        "wartosci_ok": [],
+        "wartosci_zle": [],
+        "uzasadnienie": ""
+    },
     "harmonogram_transz": [
-        {"numer_transzy": 1, "rodzaj": "transza 1", "kwota": "144 000,00 zł", "termin_platnosci": "21-03-2026"},
-        {"numer_transzy": 2, "rodzaj": "transza 2", "kwota": "216 000,00 zł", "termin_platnosci": "15-08-2026"},
-        {"numer_transzy": 3, "rodzaj": "transza 3", "kwota": "216 000,00 zł", "termin_platnosci": "10-02-2027"},
-        {"numer_transzy": 4, "rodzaj": "transza 4", "kwota": "144 000,00 zł", "termin_platnosci": "30-06-2027"}
+        {
+            "numer_transzy": 1,
+            "rodzaj": "transza 1",
+            "kwota": "144 000,00 zł",
+            "termin_platnosci": "21-03-2026"
+        },
+        {
+            "numer_transzy": 2,
+            "rodzaj": "transza 2",
+            "kwota": "216 000,00 zł",
+            "termin_platnosci": "15-08-2026"
+        },
+        {
+            "numer_transzy": 3,
+            "rodzaj": "transza 3",
+            "kwota": "216 000,00 zł",
+            "termin_platnosci": "10-02-2027"
+        },
+        {
+            "numer_transzy": 4,
+            "rodzaj": "transza 4",
+            "kwota": "144 000,00 zł",
+            "termin_platnosci": "30-06-2027"
+        }
     ],
     "dodatkowe_nieruchomosci": [],
     "podsumowanie": "Umowa deweloperska dotyczy lokalu mieszkalnego nr 42 przy ul. Puławskiej 17B w Warszawie wraz z udziałem w garażu wielostanowiskowym. Nieruchomość gruntowa ma urządzoną księgę wieczystą, a bank finansujący inwestycję wyraził zgodę na bezobciążeniowe wyodrębnienie lokalu. Cena płatna jest w czterech transzach na mieszkaniowy rachunek powierniczy. Przeniesienie własności przewidziano do 30 czerwca 2027 r.",
@@ -47,23 +143,15 @@
         }
     ],
     "weryfikacja_uniflow": [
-        {"status": "zgodne", "tytul": "Zgodność pierwszego nabywcy", "opis": "Adam Nowak występuje we wniosku i w umowie."},
-        {"status": "niezgodne", "tytul": "Niezgodność nazwiska", "opis": "Nazwisko drugiego nabywcy w umowie (Nowak) różni się od danych UniFlow (Kowalska)."}
-    ],
-    "rozbieznosci": [
         {
-            "pole": "data_umowy",
-            "wartosc_glowna": "14-03-2026",
-            "wartosci_ok": ["14 marca 2026"],
-            "wartosci_zle": ["15 marca 2026"],
-            "uzasadnienie": "W komparycji 14 marca 2026 r., na końcu aktu 15 marca 2026 r."
+            "status": "zgodne",
+            "tytul": "Zgodność pierwszego nabywcy",
+            "opis": "Adam Nowak występuje we wniosku i w umowie."
         },
         {
-            "pole": "numer_kw",
-            "wartosc_glowna": "WA1M/00123456/7",
-            "wartosci_ok": [],
-            "wartosci_zle": ["WA1M/0O123456/7"],
-            "uzasadnienie": "W § 6 litera O zamiast zera — prawdopodobnie błąd odczytu."
+            "status": "niezgodne",
+            "tytul": "Niezgodność nazwiska",
+            "opis": "Nazwisko drugiego nabywcy w umowie (Nowak) różni się od danych UniFlow (Kowalska)."
         }
     ]
 }

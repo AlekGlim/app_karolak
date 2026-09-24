@@ -329,10 +329,30 @@ Przykład: pole `powierzchnia_uzytkowa`.
 3. **Kopiowanie do UniFlow** (opcjonalnie) — dopisz klucz do `POLA_DO_PRZEPISANIA` w `app.py`.
 4. **Rozbieżności** (tylko jeśli pole ma być sprawdzane pod kątem niejednolitych zapisów
    w dokumencie):
-   - w schemacie dopisz klucz do listy pól w opisie `rozbieznosci` i dodaj reguły dla
-     tego rodzaju pola,
+   - w schemacie zdefiniuj pole jako obiekt z trzema poziomami — skopiuj definicję pola
+     tego samego rodzaju (`data_umowy` dla daty, `numer_kw` dla identyfikatora,
+     `nabywca_1` dla osoby) i zmień opis:
+     ```json
+     "powierzchnia_uzytkowa": {
+         "type": "object",
+         "description": "...",
+         "properties": {
+             "wartosc_glowna": {"type": "string", "description": "..."},
+             "wartosci_ok":    {"type": "array", "items": {"type": "string"}, "description": "..."},
+             "wartosci_zle":   {"type": "array", "items": {"type": "string"}, "description": "..."},
+             "uzasadnienie":   {"type": "string", "description": "..."}
+         },
+         "required": ["wartosc_glowna", "wartosci_ok", "wartosci_zle"]
+     }
+     ```
+     Reszta aplikacji widzi takie pole jako zwykłą wartość (`wartosc_glowna`) —
+     zamianę robi `splaszcz_wynik` (sekcja ROZBIEŻNOŚCI), więc widoku z kroku 2 nie
+     trzeba zmieniać;
    - w `app.py`, sekcja USTALENIA, dopisz etykietę do `ETYKIETY_POL_ROZBIEZNOSCI` i wagę do
-     `POZIOM_ROZBIEZNOSCI` (`"wysoki"` albo `"sredni"`).
+     `POZIOM_ROZBIEZNOSCI` (`"wysoki"` albo `"sredni"`);
+   - jeśli to data albo identyfikator, dopisz klucz do `POLA_DAT` albo
+     `POLA_IDENTYFIKATOROW` (sekcja SZUKANIE) — wtedy o tym, czy zapis jest „ok”, czy
+     „zły”, decyduje Python, a nie model (`rodzaj_zapisu`).
 5. **Tryb offline** — dopisz przykładową wartość do `dev/wynik_umowa_deweloperska.json`,
    inaczej pola nie zobaczysz lokalnie. Test `test_offline_wynik_zgodny_ze_schematem`
    pilnuje, żeby ten plik nie miał kluczy spoza schematu.
@@ -351,7 +371,8 @@ Pole puste w wyniku (`None` albo `""`) nie jest wyświetlane — `pole_pdf` je p
 4. Widok wyniku: dopóki nie napiszesz własnego, `pokaz_wynik_dokumentu` pokazuje wynik jako
    JSON. Własny widok dopisz tam jako kolejny warunek na `analiza.typ_dokumentu`.
 5. Panel ustaleń, szukajka, cache i podsumowanie działają bez zmian, jeśli schemat ma pola
-   `podsumowanie`, `potencjalne_ryzyka`, `weryfikacja_uniflow` (i opcjonalnie `rozbieznosci`).
+   `podsumowanie`, `potencjalne_ryzyka`, `weryfikacja_uniflow` (i opcjonalnie pola z trzema
+   poziomami — patrz 3.2, krok 4).
 
 ### 3.4. Nowa twarda walidacja (liczona w Pythonie)
 
