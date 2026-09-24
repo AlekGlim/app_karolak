@@ -5,13 +5,16 @@ ustalenia, widoki) działa na tych danych dokładnie tak jak na produkcyjnych,
 więc nie powtarza się problem dawnego trybu demo, który dublował analizę
 i rozjeżdżał się ze schematem.
 
-Dane w katalogu dev/:
+Dane w katalogu dev/ (generuje je dev/generuj_umowe_demo.py):
   wnioskodawcy.json               wiersze tabeli wnioskodawców (jak z hurtowni)
   wynik_umowa_deweloperska.json   odpowiedź endpointu Extract
-  umowa_demo.pdf                  dokument pasujący do powyższych danych
+  umowa_demo_skan.pdf             skan umowy — typowy przypadek, bez warstwy tekstowej
+  ocr_umowa_demo_skan.txt         odpowiedź endpointu OCR dla skanu
+  umowa_demo.pdf                  ta sama umowa z warstwą tekstową
 
-OCR zwraca warstwę tekstową PDF, więc szukajka działa na prawdziwym tekście
-wgranego pliku. Extract zwraca zawsze ten sam JSON, niezależnie od pliku.
+OCR: dla PDF-a z warstwą tekstową zwraca ten tekst; dla skanu zwraca
+ocr_umowa_demo_skan.txt (w formacie endpointu), niezależnie od wgranego
+skanu. Extract zwraca zawsze ten sam JSON, niezależnie od pliku.
 """
 
 import json
@@ -74,6 +77,10 @@ def wywolaj_ocr(plik_bajty, token, document_group_id):
         dokument.close()
 
     time.sleep(0.5)
+
+    if not any(strona.strip() for strona in strony):
+        return (KATALOG_DEV / "ocr_umowa_demo_skan.txt").read_text(encoding="utf-8")
+
     return ZNACZNIK_STRONY.join(strony)
 
 

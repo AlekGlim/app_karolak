@@ -466,31 +466,32 @@ CUSTOM_CSS = """
         margin-right: 6px;
         vertical-align: middle;
     }
-    /* fragment trafienia na stronie skanu, której nie da się podświetlić */
+    /* fragment tekstu OCR z trafieniem — przy skanie główny wskaźnik położenia frazy */
     .kontekst-trafienia {
         background: var(--tlo-karty, #FFF);
         border: 1px solid var(--obramowanie, #E5E7EB);
-        border-left: 3px solid var(--akcent, #E4032E);
+        border-left: 4px solid var(--akcent, #E4032E);
         border-radius: 8px;
-        padding: 9px 13px;
-        margin-bottom: 8px;
-        font-size: 0.84rem;
-        line-height: 1.55;
+        padding: 10px 14px 11px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+        line-height: 1.6;
         color: var(--tekst, #1F2937);
+        word-break: break-word;
     }
     .fragment-meta {
         color: var(--tekst-przygaszony, #6B7280);
         font-size: 0.7rem;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-bottom: 4px;
     }
     .kontekst-trafienia mark {
-        background: #FEF08A;
-        color: #1F2937;
+        color: var(--tekst, #1F2937);
         padding: 1px 3px;
         border-radius: 3px;
-        font-weight: 600;
+        font-weight: 700;
     }
 
     /* --- nagłówek pola z dymkiem --- */

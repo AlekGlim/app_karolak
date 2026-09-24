@@ -1,5 +1,6 @@
 """Tekst OCR: normalizacja do porównań i znaczniki stron [STRONA_X]."""
 
+import html
 import re
 import unicodedata
 from functools import lru_cache
@@ -25,7 +26,7 @@ def dodaj_markery_stron(ocr_text):
     return "".join(wynik)
 
 
-DLUGOSC_KONTEKSTU = 110
+DLUGOSC_KONTEKSTU = 200
 
 
 @lru_cache(maxsize=None)
@@ -78,3 +79,42 @@ def normalizuj_do_porownania(tekst):
     więc im ostrzejsze porównanie, tym mniej fałszywych potwierdzeń.
     """
     return re.sub(r"\s+", " ", str(tekst)).strip().lower()
+
+
+def tekst_do_wyswietlenia(fragment):
+    """Fragment tekstu OCR w postaci do pokazania analitykowi.
+
+    Endpoint OCR (prebuilt-layout) zwraca markdown z encjami zamiast < i >:
+    tabele jako &lt;table&gt;&lt;tr&gt;&lt;td&gt;…, komentarze stron
+    (&lt;!-- PageHeader=… --&gt;), nagłówki "# ", znaczniki pól wyboru.
+    Tu zostaje sam tekst: komórki tabeli rozdzielone " · ", wiersze " | ", reszta znaczników
+    usunięta. Fragment jest wycinkiem, więc obcięte znaczniki na jego
+    brzegach też są usuwane.
+
+    Wynik to zwykły tekst — przed wstawieniem do HTML trzeba go escapować.
+    """
+    tekst = str(fragment)
+
+    # encja przecięta brzegiem wycinka ("&l" na końcu, "t;" na początku)
+    tekst = re.sub(r"&[a-zA-Z#0-9]{0,7}$", "", tekst)
+    tekst = re.sub(r"^(?:l?t|g?t|a?m?p|q?u?o?t);", "", tekst)
+
+    tekst = html.unescape(tekst)
+
+    # komentarze, także obcięte na brzegach wycinka
+    tekst = re.sub(r"<!--.*?-->", " ", tekst, flags=re.DOTALL)
+    tekst = re.sub(r"^[^<]*?-->", " ", tekst, flags=re.DOTALL)
+    tekst = re.sub(r"<!--.*$", " ", tekst, flags=re.DOTALL)
+
+    # tabele: granica komórek -> separator, pozostałe znaczniki -> odstęp
+    tekst = re.sub(r"</t[dh]>\s*<t[dh][^>]*>", " · ", tekst)
+    tekst = re.sub(r"</t[dh]>\s*</tr>\s*<tr[^>]*>\s*<t[dh][^>]*>", " | ", tekst)
+    tekst = re.sub(r"</tr>\s*<tr[^>]*>", " | ", tekst)
+    tekst = re.sub(r"</?[a-zA-Z][^>]*>", " ", tekst)
+    tekst = re.sub(r"^\s*/?[a-zA-Z]{1,10}>", " ", tekst)   # "td>" na początku wycinka
+    tekst = re.sub(r"</?[a-zA-Z]{0,10}$", " ", tekst)       # "</t" na końcu wycinka
+
+    tekst = re.sub(r"(?m)^\s*#{1,6}\s+", "", tekst)
+    tekst = re.sub(r":(?:un)?selected:", " ", tekst)
+
+    return re.sub(r"\s+", " ", tekst)

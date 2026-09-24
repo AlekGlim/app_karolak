@@ -109,3 +109,9 @@ def test_strona_dla_tokenu_jako_osobne_slowo():
     ocr = "[STRONA_1]\nlokal A30\n[STRONA_2]\nmiejsce A3."
     assert strona_dla_tokenu(ocr, "A3") == 2
     assert strona_dla_tokenu(ocr, "B7") is None
+
+
+def test_fraza_lamana_na_koncu_linii_to_trafienie_dokladne():
+    ocr = "[STRONA_1]\nprowadzi księgę\nwieczystą nr WA1M/00123456/7"
+    trafienia = szukaj_w_ocr(ocr, "prowadzi księgę wieczystą")
+    assert [(t["trafienie"], t["dokladne"]) for t in trafienia] == [("prowadzi księgę\nwieczystą", True)]

@@ -18,7 +18,8 @@ pochodzą z katalogu `dev/`, OCR czyta warstwę tekstową wgranego PDF-a:
 HIPOTEKA_OFFLINE=1 streamlit run app.py        # Windows: set HIPOTEKA_OFFLINE=1
 ```
 
-Numer wniosku: `KHB1553044`, dokument: `dev/umowa_demo.pdf`.
+Numer wniosku: `KHB1553044`, dokument: `dev/umowa_demo_skan.pdf` (skan, jak
+większość prawdziwych umów) albo `dev/umowa_demo.pdf` (PDF z warstwą tekstową).
 
 ## Struktura
 
@@ -36,12 +37,19 @@ Numer wniosku: `KHB1553044`, dokument: `dev/umowa_demo.pdf`.
 
 ## Szukajka
 
-Fraza (wpisana albo z kliknięcia w wartość pola) jest zaznaczana na stronie
-dokumentu. Pozycje słów pochodzą z warstwy tekstowej PDF (`pdfplumber`).
-Skan nie ma warstwy tekstowej — wtedy szukajka po analizie korzysta z tekstu
-OCR: przełącza na właściwą stronę i pokazuje fragment tekstu, ale nie
-zaznacza frazy na obrazie. Pełne zaznaczanie na skanach wymaga pozycji słów
-z endpointu OCR (`core/indeks.py`, funkcja `strona_ze_slow`).
+Większość dokumentów to skany, a endpoint OCR (prebuilt-layout) zwraca sam
+tekst w markdownie, podzielony na strony, bez pozycji słów. Szukajka działa
+więc na tekście OCR: fraza (wpisana albo z kliknięcia w wartość pola)
+przełącza podgląd na stronę, na której występuje, a nad podglądem pokazuje
+fragment tekstu z zaznaczonym trafieniem. Znaczniki markdown i tabele
+z odpowiedzi OCR są w tym fragmencie zamieniane na czytelny tekst.
+
+Dla PDF-a z warstwą tekstową (wygenerowanego cyfrowo) trafienie jest
+dodatkowo zaznaczone na obrazie strony — pozycje słów czyta `pdfplumber`.
+Szukanie działa wtedy także przed analizą.
+
+W trybie offline typowy przypadek to `dev/umowa_demo_skan.pdf`,
+a `dev/umowa_demo.pdf` pokazuje wariant z warstwą tekstową.
 
 ## Testy
 

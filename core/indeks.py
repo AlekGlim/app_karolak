@@ -1,14 +1,11 @@
 """Indeks dokumentu do szukajki: tekst każdej strony + pozycje słów na stronie.
 
 Strona pochodzi z jednego z dwóch źródeł:
-  - warstwa tekstowa PDF (słowa z prostokątami) — trafienie da się
-    podświetlić na obrazie strony,
-  - tekst OCR podzielony po markerach [STRONA_X] — bez prostokątów, więc
-    wiadomo tylko, na której stronie jest trafienie (skan bez warstwy tekstu).
-
-Gdy endpoint OCR zacznie zwracać pozycje słów, wystarczy zbudować strony
-przez strona_ze_slow() z jego odpowiedzi — szukanie i podświetlanie zostaną
-bez zmian.
+  - tekst OCR podzielony po markerach [STRONA_X] — typowy przypadek (skany);
+    endpoint zwraca markdown bez pozycji słów, więc wiadomo, na której
+    stronie jest trafienie, ale nie gdzie na niej,
+  - warstwa tekstowa PDF (słowa z prostokątami) — rzadziej, dla PDF-ów
+    wygenerowanych cyfrowo; trafienie da się wtedy zaznaczyć na obrazie strony.
 
 Kształt strony:
   {"numer": int, "tekst": str, "mapa": [indeks słowa | None na znak] | None,

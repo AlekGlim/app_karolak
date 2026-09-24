@@ -1,17 +1,18 @@
-"""Panel dokumentu: szukajka, nawigacja po trafieniach i strona z podświetleniem.
+"""Panel dokumentu: szukajka, nawigacja po trafieniach i podgląd strony.
 
 Układ jak w app_lite: jedno pole szukania, jeden pasek nawigacji, pod nim
-strona dokumentu z zaznaczoną frazą. Klik w wartość pola po prawej wkleja ją
-do szukajki i pokazuje pierwsze wystąpienie.
+strona dokumentu. Klik w wartość pola po prawej wkleja ją do szukajki
+i przełącza na pierwsze wystąpienie.
 
-Podświetlenie wymaga pozycji słów. Na razie pochodzą z warstwy tekstowej PDF;
-dla skanu jej nie ma, więc trafienie ze strony OCR pokazujemy jako fragment
-tekstu nad podglądem, a strona i tak przełącza się na właściwą.
+Większość dokumentów to skany, a endpoint OCR (prebuilt-layout) zwraca sam
+tekst w markdownie, podzielony na strony — bez pozycji słów. Dla takiej
+strony szukajka przełącza podgląd na właściwą stronę i pokazuje nad nim
+fragment tekstu z trafieniem. Tylko PDF z warstwą tekstową (rzadkość) daje
+pozycje słów — wtedy trafienie jest dodatkowo zaznaczone na obrazie strony.
 """
 
 import html
 import io
-import re
 
 import streamlit as st
 from PIL import Image, ImageDraw
@@ -24,6 +25,7 @@ from core.indeks import (
     znajdz_w_stronach,
 )
 from core.szukanie import warianty_do_szukania
+from core.tekst import tekst_do_wyswietlenia
 from services import pdf
 
 KLUCZ_FRAZY = "fraza_ocr"
@@ -180,17 +182,39 @@ def _legenda(trafienia):
     st.markdown(f'<div class="legenda-trafien">{wpisy}</div>', unsafe_allow_html=True)
 
 
-def _kontekst(trafienie):
-    """Fragment tekstu wokół trafienia, gdy nie da się go zaznaczyć na stronie."""
-    def jedna_linia(tekst):
-        return html.escape(re.sub(r"\s+", " ", tekst))
+def _przytnij(tekst, dlugosc, od_konca):
+    """Najwyżej `dlugosc` znaków, cięte na granicy słowa."""
+    if len(tekst) <= dlugosc:
+        return tekst
+    if od_konca:
+        wycinek = tekst[-dlugosc:]
+        return wycinek[wycinek.find(" ") + 1:] if " " in wycinek else wycinek
+    wycinek = tekst[:dlugosc]
+    return wycinek[:wycinek.rfind(" ")] if " " in wycinek else wycinek
+
+
+def _fragment(trafienie):
+    """Karta z trafieniem w tekście OCR — na skanie jedyny wskaźnik, gdzie stoi fraza.
+
+    Tekst przechodzi przez tekst_do_wyswietlenia: bez znaczników markdown
+    i tabel z odpowiedzi OCR, komórki tabeli rozdzielone " · ".
+    """
+    rodzaj = RODZAJE_TRAFIEN[trafienie["rodzaj"]]
+    przed = _przytnij(tekst_do_wyswietlenia(trafienie["przed"]).lstrip(), 150, od_konca=True)
+    po = _przytnij(tekst_do_wyswietlenia(trafienie["po"]).rstrip(), 150, od_konca=False)
+    fraza = tekst_do_wyswietlenia(trafienie["trafienie"]).strip()
+
+    meta = f'Strona {trafienie["strona"]} · tekst z OCR'
+    if not trafienie.get("dokladne", True):
+        meta += " · forma odmieniona"
 
     st.markdown(
-        f'<div class="kontekst-trafienia">'
-        f'<div class="fragment-meta">Skan bez warstwy tekstowej — fragment z tekstu OCR</div>'
-        f'…{jedna_linia(trafienie["przed"][-80:])}'
-        f'<mark>{jedna_linia(trafienie["trafienie"])}</mark>'
-        f'{jedna_linia(trafienie["po"][:80])}…'
+        f'<div class="kontekst-trafienia" style="border-left-color:{rodzaj["kolor"]}">'
+        f'<div class="fragment-meta">{html.escape(meta)}</div>'
+        f'…{html.escape(przed)}'
+        f'<mark style="background:{rodzaj["kolor"]}33;box-shadow:inset 0 -2px 0 {rodzaj["kolor"]}">'
+        f'{html.escape(fraza)}</mark>'
+        f'{html.escape(po)}…'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -214,17 +238,27 @@ def panel_dokumentu(plik_bajty, pdf_hash, nazwa_pliku, ocr_text="", potwierdzone
         st.session_state[KLUCZ_TRAFIENIA] = 0
         st.session_state[KLUCZ_OSTATNIEJ_FRAZY] = None
 
+    strony_pdf, liczba_stron = _strony_pdf(plik_bajty, pdf_hash)
+    strony = zloz_strony(strony_pdf, strony_z_ocr(ocr_text), liczba_stron)
+
+    # Skan przed analizą nie ma żadnego tekstu — szukajka czeka na OCR.
+    ma_tekst = any(strona["tekst"].strip() for strona in strony)
+
     st.session_state.setdefault(KLUCZ_FRAZY, "")
 
     fraza = st.text_input(
         "Szukaj w dokumencie",
         key=KLUCZ_FRAZY,
-        placeholder="Wpisz frazę albo kliknij wartość pola po prawej",
+        placeholder=(
+            "Wpisz frazę albo kliknij wartość pola po prawej"
+            if ma_tekst
+            else "Szukanie w dokumencie będzie dostępne po analizie (OCR)"
+        ),
+        disabled=not ma_tekst,
         label_visibility="collapsed",
     )
-
-    strony_pdf, liczba_stron = _strony_pdf(plik_bajty, pdf_hash)
-    strony = zloz_strony(strony_pdf, strony_z_ocr(ocr_text), liczba_stron)
+    if not ma_tekst:
+        fraza = ""
 
     trafienia = []
     if fraza.strip():
@@ -245,20 +279,17 @@ def panel_dokumentu(plik_bajty, pdf_hash, nazwa_pliku, ocr_text="", potwierdzone
         strona = max(1, min(st.session_state.get(KLUCZ_STRONY, 1), liczba_stron))
 
     if fraza.strip() and not trafienia:
-        if not any(s["tekst"].strip() for s in strony):
-            st.info("Dokument jest skanem bez warstwy tekstowej — szukajka zadziała po analizie (OCR).")
-        else:
-            st.warning(
-                f"Nie znaleziono „{fraza}” w dokumencie. "
-                "Wartość może być zapisana inaczej albo pochodzić z błędnego odczytu."
-            )
+        st.warning(
+            f"Nie znaleziono „{fraza}” w dokumencie. "
+            "Wartość może być zapisana inaczej albo pochodzić z błędnego odczytu."
+        )
 
     _pasek_nawigacji(trafienia, aktywne, strona, liczba_stron)
 
     if trafienia:
         _legenda(trafienia)
         if not trafienia[aktywne]["prostokaty"]:
-            _kontekst(trafienia[aktywne])
+            _fragment(trafienia[aktywne])
 
     obraz = _obraz_strony(plik_bajty, pdf_hash, strona, SKALA_RENDERU)
     na_stronie = [

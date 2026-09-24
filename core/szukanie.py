@@ -56,9 +56,11 @@ def szukaj_w_ocr(ocr_text, fraza):
                 "dokladne": dokladne,
             })
 
-    wzor_doslowny = re.escape(normalizuj_do_szukania(fraza).strip())
-    if wzor_doslowny:
-        zbierz(wzor_doslowny, True)
+    # Słowa frazy rozdziela dowolny odstęp: w tekście OCR fraza łamie się
+    # na końcu linii ("księgę\nwieczystą"), a pole z modelu ma zwykłą spację.
+    slowa = normalizuj_do_szukania(fraza).split()
+    if slowa:
+        zbierz(r"\s+".join(re.escape(slowo) for slowo in slowa), True)
 
     # Odmiana dopiero jako zapas — inaczej "Nowak" łapałoby "Nowakowski".
     if not trafienia:

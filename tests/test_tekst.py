@@ -43,3 +43,30 @@ def test_strona_dla_pozycji():
     assert strona_dla_pozycji(tekst, tekst.index("wstęp")) is None
     assert strona_dla_pozycji(tekst, tekst.index("aaa")) == 1
     assert strona_dla_pozycji(tekst, tekst.index("bbb")) == 2
+
+
+def test_tekst_do_wyswietlenia_tabela_i_encje_na_brzegach():
+    from core.tekst import tekst_do_wyswietlenia
+
+    fragment = (
+        "t;21-03-2026&lt;/td&gt;&lt;/tr&gt;\n&lt;tr&gt;&lt;td&gt;2&lt;/td&gt;"
+        "&lt;td&gt;216 000,00 zł&lt;/td&gt;&lt;td&gt;15.08.2026&l"
+    )
+    assert tekst_do_wyswietlenia(fragment).strip() == "21-03-2026 | 2 · 216 000,00 zł · 15.08.2026"
+
+
+def test_tekst_do_wyswietlenia_komentarze_naglowki_i_przeciete_znaczniki():
+    from core.tekst import tekst_do_wyswietlenia
+
+    fragment = (
+        'Header="Kancelaria" --&gt;\n\n# UMOWA DEWELOPERSKA\n\n'
+        '§ 1. Deweloper :selected: oświadcza\n&lt;!-- PageNumber="1" --&gt;\ndalej &lt;!-- Page'
+    )
+    assert tekst_do_wyswietlenia(fragment).strip() == "UMOWA DEWELOPERSKA § 1. Deweloper oświadcza dalej"
+
+
+def test_tekst_do_wyswietlenia_encje_zwyklego_tekstu():
+    from core.tekst import tekst_do_wyswietlenia
+
+    # endpoint zamienia < > & na encje także w zwykłym tekście
+    assert tekst_do_wyswietlenia("cena 5 &lt; 6 oraz A &amp; B") == "cena 5 < 6 oraz A & B"
