@@ -46,7 +46,7 @@ import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -285,10 +285,13 @@ def kwota_na_grosze(tekst):
 def wzorzec_kwoty(grosze):
     """Wyrażenie regularne dopasowujące daną kwotę w każdym zapisie.
 
-    Separator tysięcy może być spacją, kropką albo go nie być; część
-    ułamkowa jest opcjonalna, gdy grosze są zerowe. Lookbehind i lookahead
-    pilnują, żeby 500 nie dopasowało się do środka "45 500,00" ani "500 000",
-    a kwota bez groszy nie złapała "450 000,50".
+    Separator tysięcy może być spacją, kropką, złamaniem linii albo go nie
+    być; część ułamkowa jest opcjonalna, gdy grosze są zerowe. Złamanie
+    linii dopuszczamy, bo OCR skanu dzieli kwotę w tabeli na dwie linie
+    ("720\\n000,00 zł") tak samo łatwo jak resztę tekstu — bez tego kwota
+    z wyraźnie widocznej tabeli wychodziłaby jako "brak w dokumencie".
+    Lookbehind i lookahead pilnują, żeby 500 nie dopasowało się do środka
+    "45 500,00" ani "500 000", a kwota bez groszy nie złapała "450 000,50".
     """
     zlote, gr = divmod(grosze, 100)
 
@@ -299,10 +302,10 @@ def wzorzec_kwoty(grosze):
         cyfry = cyfry[:-3]
     grupy.insert(0, cyfry)
 
-    calkowita = r"[ .]?".join(grupy)
+    calkowita = r"[\s.]?".join(grupy)
     ulamek = r"(?:,00)?" if gr == 0 else f",{gr:02d}"
 
-    return r"(?<![\d,.])(?<!\d[ .])" + calkowita + ulamek + r"(?!\d|,\d|[ .]\d{3})"
+    return r"(?<![\d,.])(?<!\d[\s.])" + calkowita + ulamek + r"(?!\d|,\d|[\s.]\d{3})"
 
 
 # Zapis, który na pewno jest kwotą: z separatorem tysięcy albo z groszami.
@@ -2655,6 +2658,17 @@ CUSTOM_CSS = """
         cursor: help;
     }
     .znacznik-rozbieznosc { background: #FFF4E5; color: #B25E00; }
+    .znacznik-ok { background: var(--ryzyko-niskie-tlo); color: var(--ryzyko-niskie); }
+    .znacznik-brak { background: var(--ryzyko-wysokie-tlo); color: var(--ryzyko-wysokie); }
+    /* Trafienie przez odmianę ("Warszawa" -> "w Warszawie") to poprawny wynik,
+       nie problem — bez tła, bez pogrubienia i w przygaszonym kolorze,
+       żeby wzrok szedł do ⚠ i ✕, a nie tutaj. */
+    .znacznik-odmiana {
+        background: transparent;
+        color: var(--tekst-przygaszony);
+        font-weight: 400;
+        padding: 2px 0;
+    }
 
     /* komponent st-copy renderuje się jako iframe — domyślnie rezerwuje
        za dużo pionu i rozpycha komórki siatki */
@@ -2913,28 +2927,67 @@ POLA_DO_PRZEPISANIA = {
 }
 
 
-def _znacznik_pola(problem):
-    """Znacznik stanu w nagłówku pola: rozbieżność lub pusty string.
-
-    Pusty string zamiast braku elementu, żeby .pole-naglowek (min-height)
-    wyrównał wysokość pól bez znacznika do tych z nim.
+def _opis_trafien(trafienia):
+    """Treść dymka: ile razy wartość stoi w dokumencie, na jakich stronach
+    i — gdy zapis się różni — w jakich formach. Analityk najeżdża myszą
+    i wie od razu, bez otwierania szukajki, czy warto sprawdzać dalej.
     """
-    if not problem:
+    if not trafienia:
+        return "Wartość nie występuje w dokumencie — możliwy błąd odczytu OCR."
+
+    strony = sorted({t["strona"] for t in trafienia if t["strona"]})
+    opis = f"Znaleziono {len(trafienia)}× w dokumencie"
+    if strony:
+        opis += f", strony: {', '.join(str(s) for s in strony)}"
+    opis += "."
+
+    formy = sorted({t["trafienie"].strip() for t in trafienia if t["trafienie"].strip()})
+    if len(formy) > 1:
+        opis += " Zapisy: " + ", ".join(f'„{f}”' for f in formy) + "."
+
+    return opis
+
+
+def _znacznik_pola(problem, wartosc=None, ocr_text=None, potwierdzone=None):
+    """Znacznik stanu w nagłówku pola.
+
+    Rozbieżność z ustaleń ma pierwszeństwo — to już decyzja do podjęcia.
+    W innym wypadku pole dostaje tick liczony z tekstu OCR: ✓ z liczbą
+    trafień, ≈ gdy znaleziono tylko przez odmianę, ✕ gdy wartości nie ma
+    w dokumencie wcale (możliwy błąd odczytu). Dymek (title) tłumaczy,
+    o co chodzi, po najechaniu myszą — bez zaglądania do panelu ustaleń.
+
+    Pusty string, gdy nie da się nic policzyć (brak ocr_text), żeby
+    .pole-naglowek (min-height) wyrównał wysokość do pól ze znacznikiem.
+    """
+    if problem:
+        dymek = html.escape(f'{problem.get("opis", "")} → {problem.get("krok", "")}')
+        return f'<span class="znacznik znacznik-rozbieznosc" title="{dymek}">⚠ rozbieżność</span>'
+
+    if not ocr_text or not wartosc:
         return ""
 
-    dymek = f'{problem.get("opis", "")} → {problem.get("krok", "")}'
+    zapisy = warianty_do_szukania(str(wartosc), potwierdzone)
+    trafienia = szukaj_w_ocr_z_wariantami(ocr_text, zapisy)
+    dymek = html.escape(_opis_trafien(trafienia))
 
-    return (
-        f'<span class="znacznik znacznik-rozbieznosc" '        f'title="{dymek}">⚠ rozbieżność</span>'
-    )
+    if not trafienia:
+        return f'<span class="znacznik znacznik-brak" title="{dymek}">✕ brak</span>'
+
+    if all(not t.get("dokladne", True) for t in trafienia):
+        return f'<span class="znacznik znacznik-odmiana" title="{dymek}">≈ {len(trafienia)}</span>'
+
+    return f'<span class="znacznik znacznik-ok" title="{dymek}">✓ {len(trafienia)}</span>'
 
 
-def pole_pdf(
+def _pole_pdf(
     etykieta,
     wartosc,
     key,
     problem=None,
-    potwierdzone=None
+    potwierdzone=None,
+    ocr_text=None,
+    kopiowanie=None,
 ):
     """Pole z wartością: on_click wkleja do szukajki i skacze do strony.
 
@@ -2943,6 +2996,10 @@ def pole_pdf(
     który należy do widgetu text_input. Ręczne
     st.session_state["fraza_ocr"] = ... po wyrenderowaniu widgetu rzuca
     błąd Streamlita ("cannot be modified after widget is instantiated").
+
+    `kopiowanie` nadpisuje domyślną regułę (POLA_DO_PRZEPISANIA) — potrzebne
+    dla pól z dynamicznym kluczem, jak transze harmonogramu, których nie da
+    się z góry wypisać w stałej liście.
     """
 
     if not wartosc:
@@ -2951,7 +3008,7 @@ def pole_pdf(
     st.markdown(
         f'<div class="pole-naglowek">'
         f'<span class="pole-etykieta">{etykieta}</span>'
-        f'{_znacznik_pola(problem)}'
+        f'{_znacznik_pola(problem, wartosc, ocr_text, potwierdzone)}'
         f'</div>',
         unsafe_allow_html=True
     )
@@ -2965,7 +3022,8 @@ def pole_pdf(
         args=(str(wartosc),),
     )
 
-    if key in POLA_DO_PRZEPISANIA:
+    pokaz_kopiowanie = key in POLA_DO_PRZEPISANIA if kopiowanie is None else kopiowanie
+    if pokaz_kopiowanie:
         if MA_KOPIOWANIE:
             copy_button(
                 str(wartosc),
@@ -3104,6 +3162,11 @@ def widok_umowy_deweloperskiej(analiza):
 
     wynik = analiza.wynik
     harmonogram = wynik.get("harmonogram_transz", [])
+
+    # Wersja pole_pdf związana z tekstem OCR tej konkretnej analizy — dzięki
+    # temu każde wywołanie niżej liczy tick (✓/≈/✕) bez przenoszenia ocr_text
+    # przez kolejny parametr w kilkudziesięciu miejscach.
+    pole_pdf = partial(_pole_pdf, ocr_text=analiza.ocr_text)
 
     # Rozbieżności zgłoszone przez model, przepuszczone przez weryfikację
     # w tekście OCR — zasilają dymki przy polach, liczniki w nagłówkach sekcji
@@ -3369,11 +3432,20 @@ def widok_umowy_deweloperskiej(analiza):
         col1, col2 = st.columns(2)
 
         with col1:
+            # Bez ocr_text: "adres" jest złożony w interfejsie z ulicy,
+            # numeru budynku i miasta (patrz wyżej), a nie jedną wartością
+            # z ekstrakcji. W dokumencie te trzy elementy nie stoją jedna
+            # frazą po drugiej (odmiana, "w" między numerem a miastem)
+            # — tick pokazywałby ✕ nawet gdy adres w całości jest
+            # w dokumencie, tylko inaczej zapisany. Klik w pole ma ten sam
+            # problem przy skoku do strony — do poprawy razem, np.
+            # szukaniem każdego komponentu osobno i łączeniem trafień.
             pole_pdf(
                 "Adres",
                 adres,
                 "adres",
-                problemy.get("adres")
+                problemy.get("adres"),
+                ocr_text=None,
             )
 
         with col2:
@@ -3518,11 +3590,14 @@ def widok_umowy_deweloperskiej(analiza):
                 )
 
             with col2:
+                # Bez ocr_text — z tego samego powodu co "Adres" wyżej:
+                # złożona fraza z ulicy, numeru i miasta.
                 pole_pdf(
                     "Adres",
                     adres2,
                     f"dod_adres_{idx}",
-                    problemy.get(f"dod_adres_{idx}")
+                    problemy.get(f"dod_adres_{idx}"),
+                    ocr_text=None,
                 )
 
             col1, col2 = st.columns(2)
@@ -3643,36 +3718,69 @@ def widok_umowy_deweloperskiej(analiza):
     # ====================================================
     # HARMONOGRAM
     # ====================================================
+    # Każda transza jako dwa klikalne pola (kwota, termin), nie wiersz
+    # tabeli — inaczej klik w pojedynczą kwotę i skok do jej miejsca
+    # w dokumencie byłby niemożliwy do zrobienia w st.dataframe.
+
+    klucze_transz = [
+        klucz
+        for t in harmonogram
+        for klucz in (f"transza_{t.get('numer_transzy')}_kwota", f"transza_{t.get('numer_transzy')}_termin")
+    ]
+    wynik_transz = {}
+    for t in harmonogram:
+        wynik_transz[f"transza_{t.get('numer_transzy')}_kwota"] = t.get("kwota")
+        wynik_transz[f"transza_{t.get('numer_transzy')}_termin"] = t.get("termin_platnosci")
+
+    etykieta_harmonogramu, otworz_harmonogram = etykieta_sekcji(
+        "📅",
+        "Harmonogram",
+        klucze_transz,
+        wynik_transz,
+        klucze_problemow
+    )
 
     with st.expander(
-        f"📅 HARMONOGRAM   ×{len(harmonogram)}",
-        expanded=False
+        etykieta_harmonogramu,
+        # Otwiera się też, gdy nie zgadza się suma transz — problem
+        # jest wtedy przypisany do laczna_wartosc_transakcji, nie do
+        # pojedynczej transzy, więc same klucze transz go nie wykryją.
+        expanded=otworz_harmonogram or "laczna_wartosc_transakcji" in klucze_problemow
     ):
 
         if harmonogram:
 
-            df = pd.DataFrame(
-                harmonogram
-            ).rename(
-                columns={
-                    "numer_transzy": "Transza",
-                    "kwota": "Kwota",
-                    "termin_platnosci": "Termin płatności",
-                }
-            )
+            for t in harmonogram:
+                numer = t.get("numer_transzy")
 
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True
-            )
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    pole_pdf(
+                        f"Transza {numer} — kwota",
+                        t.get("kwota"),
+                        f"transza_{numer}_kwota",
+                        problemy.get(f"transza_{numer}_kwota"),
+                        potwierdzone,
+                        kopiowanie=True,
+                    )
+
+                with col2:
+                    pole_pdf(
+                        f"Transza {numer} — termin płatności",
+                        t.get("termin_platnosci"),
+                        f"transza_{numer}_termin",
+                        problemy.get(f"transza_{numer}_termin"),
+                        potwierdzone,
+                        kopiowanie=True,
+                    )
 
         else:
             st.caption(
                 "Brak harmonogramu."
             )
 
-        
+
 def widok_json(wynik):
 
     st.json(
