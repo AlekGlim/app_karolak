@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+
+# paczka do wysłania mailem (narzedzia/pakuj_do_txt.py)
+paczka_wysylka/

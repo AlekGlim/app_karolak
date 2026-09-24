@@ -2,7 +2,8 @@
 
 Instrukcja ma trzy części:
 
-1. [Uruchomienie](#1-uruchomienie) — na serwerze i lokalnie, bez hurtowni.
+1. [Uruchomienie](#1-uruchomienie) — na serwerze, lokalnie bez hurtowni i przeniesienie
+   projektu mailem jako pliki `.txt`.
 2. [Praca analityka](#2-praca-analityka) — co widać na ekranie i jak z tego korzystać.
 3. [Pliki i wprowadzanie zmian](#3-pliki-i-wprowadzanie-zmian) — co leży w którym pliku, jak
    zmienić prompt, dodać pole, nowy typ dokumentu, walidację albo wygląd.
@@ -82,6 +83,59 @@ pytest
 ```
 
 Testy nie potrzebują hurtowni ani API. Uruchamiaj je przed każdym wdrożeniem.
+
+### Przeniesienie projektu na inny komputer (mailem, same pliki .txt)
+
+Gdy poczta przepuszcza tylko załączniki `.txt`:
+
+**Na komputerze, z którego wysyłasz** — w katalogu projektu:
+
+```
+python narzedzia/pakuj_do_txt.py
+```
+
+W katalogu `paczka_wysylka/` powstaje ok. 50 plików `.txt` (ok. 600 KB). Wyślij
+**wszystkie**. Jeśli wolisz jeden załącznik zamiast pięćdziesięciu:
+
+```
+python narzedzia/pakuj_do_txt.py --jeden-plik
+```
+
+Wtedy paczka to cztery pliki: `00_PRZECZYTAJ.txt`, `ROZPAKUJ.py.txt`, `MANIFEST.txt`
+i `PACZKA_CALOSC.txt` z całą resztą.
+
+Zawartość paczki:
+
+| Plik | Co to |
+|---|---|
+| `00_PRZECZYTAJ.txt` | instrukcja dla odbiorcy |
+| `ROZPAKUJ.py.txt` | skrypt odtwarzający projekt |
+| `MANIFEST.txt` | lista plików: prawdziwa ścieżka, sposób zapisu, suma SHA-256 |
+| `app.py.txt`, `core--szukanie.py.txt`, … | pliki projektu; `--` zastępuje `/`, `_` kropkę na początku nazwy |
+| `dev--umowa_demo_skan.pdf.base64.txt`, … | pliki binarne (PDF-y demo, logo) zapisane jako base64 |
+
+**Na komputerze, na który przenosisz** — zapisz wszystkie załączniki w jednym pustym
+katalogu i w nim uruchom:
+
+```
+python ROZPAKUJ.py.txt
+```
+
+Nie trzeba zmieniać nazwy — Python uruchomi plik mimo rozszerzenia `.txt`. Projekt
+powstaje w katalogu `hipoteka_ai` obok katalogu z załącznikami. Inny katalog docelowy:
+`python ROZPAKUJ.py.txt C:\projekty\hipoteka`. Istniejący projekt nadpiszesz flagą
+`--nadpisz` (bez niej skrypt odmówi, jeśli pliki się różnią — żeby nie skasować
+lokalnych zmian).
+
+Rozpakowanie sprawdza sumę kontrolną każdego pliku. Jeśli brakuje załącznika albo poczta
+zmieniła treść, skrypt wypisze, których plików to dotyczy, i **niczego nie zapisze**.
+Zamiana końców linii (CRLF) i znak BOM dodane przez pocztę lub Notatnik są cofane
+automatycznie.
+
+**Czego nie ma w paczce** (celowo — trzeba mieć na miejscu): `token.txt`, certyfikatów
+`*.pem`, modułów serwerowych `config.py`, `helpers.py`, `impala_connector/` oraz katalogów
+`.git`, `__pycache__`, `.venv`. Listy wykluczeń są na początku `narzedzia/pakuj_do_txt.py`
+(`POMIJANE_KATALOGI`, `POMIJANE_PLIKI`, `POMIJANE_ROZSZERZENIA`).
 
 ---
 
@@ -181,6 +235,9 @@ services/              wejście/wyjście
 schemy/
   umowa_deweloperska.json   schemat ekstrakcji = pytanie do modelu
 dev/                   dane trybu offline (patrz 3.10)
+narzedzia/
+  pakuj_do_txt.py      paczka .txt do wysłania mailem (patrz 1. Przeniesienie projektu)
+  rozpakuj.py          odtworzenie projektu z paczki; w paczce jako ROZPAKUJ.py.txt
 tests/                 testy pytest
 ```
 
@@ -406,3 +463,5 @@ w panelu ustaleń.
 | fraza nie jest zaznaczona na stronie | skan bez warstwy tekstowej (norma) albo brak `pdfplumber` | na skanach to oczekiwane — pozycję wskazuje fragment tekstu nad podglądem |
 | brak przycisku „Kopiuj” jednym kliknięciem | brak pakietu `st-copy` | `pip install st-copy`; bez niego działa zapasowy wariant z ikoną kopiowania |
 | brak logo | brak `logo_mbank.jpg` obok `app.py` | skopiuj plik |
+| `ROZPAKUJ.py.txt`: „brak załącznika …” | poczta albo kopiowanie zgubiło plik | zapisz brakujący załącznik z maila do katalogu paczki i uruchom ponownie |
+| `ROZPAKUJ.py.txt`: „suma kontrolna się nie zgadza” | załącznik zmieniony po drodze (np. przez filtr poczty) | wyślij ten plik jeszcze raz albo całą paczkę w trybie `--jeden-plik` |
