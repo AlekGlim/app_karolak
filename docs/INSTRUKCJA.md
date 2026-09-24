@@ -86,56 +86,62 @@ Testy nie potrzebują hurtowni ani API. Uruchamiaj je przed każdym wdrożeniem.
 
 ### Przeniesienie projektu na inny komputer (mailem, same pliki .txt)
 
-Gdy poczta przepuszcza tylko załączniki `.txt`:
-
 **Na komputerze, z którego wysyłasz** — w katalogu projektu:
 
 ```
-python narzedzia/pakuj_do_txt.py
+python kopiuj_do_wysylki.py
 ```
 
-W katalogu `paczka_wysylka/` powstaje ok. 50 plików `.txt` (ok. 600 KB). Wyślij
-**wszystkie**. Jeśli wolisz jeden załącznik zamiast pięćdziesięciu:
+Skrypt kopiuje pliki potrzebne do działania aplikacji do katalogu `paczka_wysylka/`
+i każdemu dopisuje `.txt` na końcu nazwy: `app.py` → `app.py.txt`,
+`core/szukanie.py` → `core/szukanie.py.txt`. Katalogi zostają takie same.
+Listę kopiowanych plików zmienia się w `WYMAGANE` na początku skryptu (testy są
+tam zakomentowane). `token.txt` i certyfikaty `*.pem` nigdy nie są kopiowane.
 
-```
-python narzedzia/pakuj_do_txt.py --jeden-plik
-```
+Wyślij pliki mailem. Katalogi się w mailu nie przeniosą, więc najprościej wysłać
+każdy katalog (`core`, `services`, `ui`, `schemy`, `dev`, `docs`) osobnym mailem
+albo zapamiętać, który plik skąd pochodzi — patrz lista niżej.
 
-Wtedy paczka to cztery pliki: `00_PRZECZYTAJ.txt`, `ROZPAKUJ.py.txt`, `MANIFEST.txt`
-i `PACZKA_CALOSC.txt` z całą resztą.
+**Na komputerze, na który przenosisz:**
 
-Zawartość paczki:
+1. Odtwórz strukturę katalogów i zapisz pliki na swoich miejscach:
 
-| Plik | Co to |
-|---|---|
-| `00_PRZECZYTAJ.txt` | instrukcja dla odbiorcy |
-| `ROZPAKUJ.py.txt` | skrypt odtwarzający projekt |
-| `MANIFEST.txt` | lista plików: prawdziwa ścieżka, sposób zapisu, suma SHA-256 |
-| `app.py.txt`, `core--szukanie.py.txt`, … | pliki projektu; `--` zastępuje `/`, `_` kropkę na początku nazwy |
-| `dev--umowa_demo_skan.pdf.base64.txt`, … | pliki binarne (PDF-y demo, logo) zapisane jako base64 |
+   ```
+   hipoteka_ai/
+     app.py.txt  stan.py.txt  ustawienia.py.txt  requirements.txt.txt  README.md.txt
+     core/       __init__.py.txt daty.py.txt indeks.py.txt kwoty.py.txt rozbieznosci.py.txt
+                 szukanie.py.txt tekst.py.txt ustalenia.py.txt walidacje.py.txt
+     services/   __init__.py.txt analiza.py.txt hurtownia.py.txt offline.py.txt pdf.py.txt
+                 schemy.py.txt sde_api.py.txt zrodla.py.txt
+     ui/         __init__.py.txt dokument.py.txt
+     schemy/     umowa_deweloperska.json.txt
+     dev/        generuj_umowe_demo.py.txt ocr_umowa_demo_skan.txt.txt umowa_demo.pdf.txt
+                 umowa_demo_skan.pdf.txt wnioskodawcy.json.txt wynik_umowa_deweloperska.json.txt
+     docs/       INSTRUKCJA.md.txt
+   ```
 
-**Na komputerze, na który przenosisz** — zapisz wszystkie załączniki w jednym pustym
-katalogu i w nim uruchom:
+2. Usuń końcówkę `.txt` z nazw — **tylko jedną, ostatnią** (`requirements.txt.txt` →
+   `requirements.txt`). Ręcznie albo jednym poleceniem w katalogu `hipoteka_ai`:
 
-```
-python ROZPAKUJ.py.txt
-```
+   ```
+   # Windows, PowerShell
+   Get-ChildItem -Recurse -File -Filter *.txt | Rename-Item -NewName { $_.Name -replace '\.txt$', '' }
 
-Nie trzeba zmieniać nazwy — Python uruchomi plik mimo rozszerzenia `.txt`. Projekt
-powstaje w katalogu `hipoteka_ai` obok katalogu z załącznikami. Inny katalog docelowy:
-`python ROZPAKUJ.py.txt C:\projekty\hipoteka`. Istniejący projekt nadpiszesz flagą
-`--nadpisz` (bez niej skrypt odmówi, jeśli pliki się różnią — żeby nie skasować
-lokalnych zmian).
+   # Linux / macOS
+   find . -type f -name "*.txt" -exec sh -c 'mv "$1" "${1%.txt}"' _ {} \;
+   ```
 
-Rozpakowanie sprawdza sumę kontrolną każdego pliku. Jeśli brakuje załącznika albo poczta
-zmieniła treść, skrypt wypisze, których plików to dotyczy, i **niczego nie zapisze**.
-Zamiana końców linii (CRLF) i znak BOM dodane przez pocztę lub Notatnik są cofane
-automatycznie.
+   Polecenie uruchom **raz** — drugie uruchomienie zdjęłoby `.txt` także z
+   `requirements.txt` i `ocr_umowa_demo_skan.txt`.
 
-**Czego nie ma w paczce** (celowo — trzeba mieć na miejscu): `token.txt`, certyfikatów
-`*.pem`, modułów serwerowych `config.py`, `helpers.py`, `impala_connector/` oraz katalogów
-`.git`, `__pycache__`, `.venv`. Listy wykluczeń są na początku `narzedzia/pakuj_do_txt.py`
-(`POMIJANE_KATALOGI`, `POMIJANE_PLIKI`, `POMIJANE_ROZSZERZENIA`).
+   W Eksploratorze Windows włącz najpierw *Widok → Rozszerzenia nazw plików*,
+   inaczej `.txt` nie będzie widoczne przy zmianie nazwy.
+
+3. Dalej jak zwykle: `pip install -r requirements.txt`, `streamlit run app.py`.
+
+Pliki `__init__.py` w `core`, `services` i `ui` są potrzebne, mimo że prawie puste —
+bez nich Python nie znajdzie modułów. Pliki PDF w `dev/` to tylko przykłady do trybu
+offline; jeśli poczta ich nie przepuści, aplikacja działa bez nich.
 
 ---
 
@@ -235,10 +241,8 @@ services/              wejście/wyjście
 schemy/
   umowa_deweloperska.json   schemat ekstrakcji = pytanie do modelu
 dev/                   dane trybu offline (patrz 3.10)
-narzedzia/
-  pakuj_do_txt.py      paczka .txt do wysłania mailem (patrz 1. Przeniesienie projektu)
-  rozpakuj.py          odtworzenie projektu z paczki; w paczce jako ROZPAKUJ.py.txt
 tests/                 testy pytest
+kopiuj_do_wysylki.py   kopia plików z końcówką .txt do wysłania mailem (patrz 1.)
 ```
 
 ### Przepływ danych
@@ -463,5 +467,5 @@ w panelu ustaleń.
 | fraza nie jest zaznaczona na stronie | skan bez warstwy tekstowej (norma) albo brak `pdfplumber` | na skanach to oczekiwane — pozycję wskazuje fragment tekstu nad podglądem |
 | brak przycisku „Kopiuj” jednym kliknięciem | brak pakietu `st-copy` | `pip install st-copy`; bez niego działa zapasowy wariant z ikoną kopiowania |
 | brak logo | brak `logo_mbank.jpg` obok `app.py` | skopiuj plik |
-| `ROZPAKUJ.py.txt`: „brak załącznika …” | poczta albo kopiowanie zgubiło plik | zapisz brakujący załącznik z maila do katalogu paczki i uruchom ponownie |
-| `ROZPAKUJ.py.txt`: „suma kontrolna się nie zgadza” | załącznik zmieniony po drodze (np. przez filtr poczty) | wyślij ten plik jeszcze raz albo całą paczkę w trybie `--jeden-plik` |
+| `ModuleNotFoundError: No module named 'core'` (albo `services`, `ui`) po przeniesieniu | brak `__init__.py` w katalogu albo zostało `.txt` w nazwie | sprawdź, czy `core/__init__.py` itd. istnieją i mają właściwe nazwy |
+| aplikacja nie widzi pliku, choć jest w katalogu | nazwa wciąż kończy się na `.txt` (Windows ukrywa rozszerzenia) | włącz widok rozszerzeń i usuń końcówkę `.txt` |

@@ -7,5 +7,5 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# paczka do wysłania mailem (narzedzia/pakuj_do_txt.py)
+# paczka do wysłania mailem (kopiuj_do_wysylki.py)
 paczka_wysylka/

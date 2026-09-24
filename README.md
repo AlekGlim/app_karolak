@@ -25,8 +25,9 @@ Numer wniosku: `KHB1553044`, dokument: `dev/umowa_demo_skan.pdf` (skan, jak
 większość prawdziwych umów) albo `dev/umowa_demo.pdf` (PDF z warstwą tekstową).
 
 Przeniesienie na inny komputer mailem (same pliki `.txt`):
-`python narzedzia/pakuj_do_txt.py`, a na miejscu `python ROZPAKUJ.py.txt` —
-szczegóły w [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).
+`python kopiuj_do_wysylki.py` kopiuje potrzebne pliki do `paczka_wysylka/`
+z końcówką `.txt`; na miejscu usuwa się tę końcówkę — szczegóły
+w [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).
 
 ## Struktura
 
@@ -40,7 +41,6 @@ szczegóły w [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).
 | `ui/`            | widoki wydzielone z app.py (panel dokumentu z szukajką)            |
 | `schemy/`        | schematy ekstrakcji                                                |
 | `dev/`           | dane do trybu offline                                              |
-| `narzedzia/`     | paczka `.txt` do wysłania mailem i jej rozpakowanie                |
 | `tests/`         | testy pytest                                                       |
 
 ## Szukajka
