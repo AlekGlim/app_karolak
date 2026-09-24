@@ -1,5 +1,6 @@
 """Twarde walidacje liczone w Pythonie: PESEL, NRB, suma harmonogramu."""
 
+import re
 from datetime import datetime
 
 from core.kwoty import wyciagnij_kwote
@@ -101,3 +102,13 @@ def czy_wartosc_transakcji_zgodna(wynik):
     )
 
     return "✅" if cena == suma else "❌"
+
+
+# Numer wniosku trafia do zapytań SQL, więc dopuszczamy wyłącznie znaki
+# spotykane w numerach (np. KHB1553044, WN/2026/00184521). Apostrof, spacja,
+# średnik itp. są odrzucane, zanim cokolwiek pójdzie do hurtowni.
+WZORZEC_NUMERU_WNIOSKU = re.compile(r"[A-Za-z0-9][A-Za-z0-9/_.\-]{0,63}")
+
+
+def czy_poprawny_numer_wniosku(numer):
+    return bool(numer) and WZORZEC_NUMERU_WNIOSKU.fullmatch(str(numer)) is not None

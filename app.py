@@ -12,9 +12,9 @@ Przepływ:
 3. Jedno wywołanie endpointu Extract ze schematem zwracającym kluczowe pola,
    podsumowanie i listę ryzyk (prawa kolumna + sekcje na dole).
 
-Token pobierany jest z pliku `token.txt` (klucz "access_token") leżącego obok
-tego skryptu. BASE_URL i CA_CERT są stałe. Trybu demo nie ma — aplikacja
-działa wyłącznie na prawdziwym API.
+Token, BASE_URL i CA_CERT — patrz ustawienia.py. Hurtownia i API są w services/;
+lokalnie, bez dostępu do hurtowni, aplikację uruchamia się w trybie offline
+(HIPOTEKA_OFFLINE=1), który podmienia wyłącznie źródła danych — patrz README.
 
 Numery stron nie pochodzą od modelu: wartość pola jest szukana w tekście OCR,
 a strona wynika z najbliższego markera [STRONA_X]. Rozbieżności w dokumencie
@@ -26,30 +26,26 @@ NIE ustawiaj base="light" w .streamlit/config.toml - jeśli taki plik istnieje,
 usuń go albo usuń z niego sekcję [theme].
 """
 
-import json
-import time
 import tempfile
 from pathlib import Path
-from datetime import datetime
 import html
 import base64
 import streamlit as st
 import pandas as pd
-import requests
-import hashlib
-import uuid
 
-from data_loader import (
-    load_wnioskodawcy,
-    load_kwoty_kredytu,
-    get_document_cache,
-    save_document_cache
-    )
+import stan
+from services import zrodla
+from services.analiza import analizuj
+from ustawienia import OFFLINE, PLIK_LOGO, PLIK_TOKENU
 from core.rozbieznosci import zweryfikuj_warianty
 from core.szukanie import szukaj_w_ocr_z_wariantami, warianty_do_szukania
-from core.tekst import dodaj_markery_stron
 from core.ustalenia import problemy_wg_pola, stan_sekcji, zbierz_problemy
-from core.walidacje import czy_wartosc_transakcji_zgodna, waliduj_nrb, waliduj_pesel
+from core.walidacje import (
+    czy_poprawny_numer_wniosku,
+    czy_wartosc_transakcji_zgodna,
+    waliduj_nrb,
+    waliduj_pesel,
+)
 
 
 # Przycisk kopiowania wartości do UniFlow. Gdy pakietu nie ma w środowisku,
@@ -62,8 +58,13 @@ except ImportError:
     MA_KOPIOWANIE = False
 
 
-with open("logo_mbank.jpg", "rb") as f:
-    logo_base64 = base64.b64encode(f.read()).decode()
+# Logo liczone od katalogu aplikacji, nie od katalogu uruchomienia.
+# Brak pliku (np. lokalnie) nie blokuje aplikacji — po prostu nie ma logo.
+logo_base64 = (
+    base64.b64encode(PLIK_LOGO.read_bytes()).decode()
+    if PLIK_LOGO.exists()
+    else ""
+)
 
 # =====================================================================
 # KONFIGURACJA STRONY
@@ -553,238 +554,7 @@ st.markdown(
 )
 
 
-# =====================================================================
-# STAŁA KONFIGURACJA API
-# =====================================================================
-
-BASE_URL = "https://hdspprd1.ux.mbank.pl/sde_service/api"
-CA_CERT = "/home/jovyan/security/ca.pem"
-PLIK_TOKENU = Path(__file__).parent / "token.txt"
 WYSOKOSC_PODGLADU = 900
-
-SCHEMY_DIR = Path(__file__).parent / "schemy"
-
-
-def wczytaj_schema(nazwa_pliku):
-    with open(
-        SCHEMY_DIR / f"{nazwa_pliku}.json",
-        "r",
-        encoding="utf-8"
-    ) as f:
-        return json.load(f)
-
-
-def przejdz_do_strony(numer_strony):
-
-    if not numer_strony:
-        return
-
-    st.session_state["wybrana_strona_pdf"] = int(
-        numer_strony
-    )
-    
-    
-def rozpoznaj_typ_dokumentu(nazwa_pliku):
-    nazwa = nazwa_pliku.lower()
-
-    if "przedwst" in nazwa:
-        return "umowa_przedwstepna"
-
-    if "deweloperska" in nazwa:
-        return "umowa_deweloperska"
-
-    return "nieznany"
-
-def rozpoznaj_typ_dokumentu(nazwa_pliku):
-
-    nazwa = nazwa_pliku.lower()
-
-    if "dewelopers" in nazwa:
-        return "umowa_deweloperska"
-
-    elif "przedwst" in nazwa:
-        return "umowa_przedwstepna"
-
-    elif "rezerw" in nazwa:
-        return "umowa_rezerwacyjna"
-
-    elif "prospekt" in nazwa:
-        return "prospekt"
-
-    elif "zbywc" in nazwa:
-        return "oswiadczenie_zbywcy"
-
-    return "umowa_deweloperska"
-
-def pobierz_schema(typ_dokumentu):
-
-    mapa = {
-        "umowa_deweloperska": "umowa_deweloperska",
-        "umowa_przedwstepna": "umowa_przedwstepna",
-        "umowa_rezerwacyjna": "umowa_rezerwacyjna",
-        "prospekt": "prospekt",
-        "oswiadczenie_zbywcy": "oswiadczenie_zbywcy"
-    }
-
-    if typ_dokumentu not in mapa:
-        raise ValueError(
-            f"Nieznany typ dokumentu: {typ_dokumentu}"
-        )
-
-    return wczytaj_schema(
-        mapa[typ_dokumentu]
-    )
-
-
-def policz_hash_pdf(plik_bajty):
-    return hashlib.sha256(plik_bajty).hexdigest()
-
-
-def policz_hash_schematu(schema):
-    """Skrót schematu ekstrakcji — część klucza cache.
-
-    sort_keys porządkuje klucze, więc samo przestawienie pól w pliku nie
-    unieważnia cache; zmiana pola albo jego opisu (czyli tego, o co prosimy
-    model) już tak.
-    """
-    tekst = json.dumps(
-        schema,
-        ensure_ascii=False,
-        sort_keys=True
-    )
-
-    return hashlib.sha256(
-        tekst.encode("utf-8")
-    ).hexdigest()
-
-
-def wczytaj_token():
-    """Wczytuje access_token z pliku token.txt."""
-    try:
-        with open("/home/jovyan/projects/analiza_prawna_hipoteka/token.txt", "r", encoding="utf-8") as f:
-            dane = json.load(f)
-        return dane.get("access_token")
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
-
-# =====================================================================
-# Wczytanie tokenu z pliku json
-# =====================================================================
-
-# def wczytaj_token():
-#     """Wczytuje access_token z token.json leżącego obok tego skryptu."""
-#     try:
-#         with open(PLIK_TOKENU, "r", encoding="utf-8") as f:
-#             dane = json.load(f)
-#         return dane.get("access_token")
-#     except (FileNotFoundError, json.JSONDecodeError):
-#         return None
-
-
-# =====================================================================
-# DANE Z HURTOWNI (mock - do podmiany na realne źródło)
-# =====================================================================
-
-def pobierz_dane_wniosku():
-    """TODO: podłączyć pod hurtownię danych. Na razie dane przykładowe."""
-    return {
-        "numer_wniosku": "WN/2026/00184521",
-        "imie": "Katarzyna",
-        "nazwisko": "Nowak",
-        "pesel": "89052112345",
-        "liczba_wnioskodawcow": 2,
-    }
-
-
-# =====================================================================
-# TRYB PRAWDZIWEGO API
-# =====================================================================
-
-
-def wywolaj_ocr_api(plik_bajty, token, document_group_id):
-    """POST /legal_analysis/ocr + polling statusu + pobranie wyniku."""
-    auth_headers = {"Authorization": f"Bearer {token}"}
-
-    response = requests.post(
-        f"{BASE_URL}/legal_analysis/ocr",
-        headers={**auth_headers, "Content-Type": "application/octet-stream"},
-        params={"document_group_id": document_group_id, "document_type": "umowa", "ocr_model" : "prebuilt-layout"},
-        data=plik_bajty,
-        verify=CA_CERT,
-        timeout=60,
-    )
-    response.raise_for_status()
-    run_id = response.json()["run_id"]
-
-    for _ in range(30):
-        resp = requests.get(
-            f"{BASE_URL}/legal_analysis/ocr/{run_id}/status",
-            headers=auth_headers,
-            verify=CA_CERT,
-            timeout=30,
-        )
-        status = resp.json().get("job_status")
-        if status == "DONE":
-            break
-        if status in ("FAILED", "ERROR"):
-            raise RuntimeError(f"OCR zakończony błędem (status={status})")
-        time.sleep(3)
-    else:
-        raise TimeoutError("Przekroczono limit oczekiwania na OCR (90 s).")
-
-    response = requests.get(
-        f"{BASE_URL}/legal_analysis/ocr/{run_id}",
-        headers=auth_headers,
-        verify=CA_CERT,
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-def wywolaj_extract_api(ocr_text, token, document_id, schema, dane_uniflow):
-    """POST /legal_analysis/extract + polling statusu + pobranie wyniku."""
-    auth_headers = {"Authorization": f"Bearer {token}"}
-
-    response = requests.post(
-        f"{BASE_URL}/legal_analysis/extract",
-        headers=auth_headers,
-        json={
-            "ocr_text": ocr_text,
-            "schema": schema,
-            "metadata": {"document_id": document_id},
-        },
-        verify=CA_CERT,
-        timeout=60,
-    )
-    response.raise_for_status()
-    run_id = response.json()["run_id"]
-
-    for _ in range(30):
-        resp = requests.get(
-            f"{BASE_URL}/legal_analysis/extract/{run_id}/status",
-            headers=auth_headers,
-            verify=CA_CERT,
-            timeout=30,
-        )
-        status = resp.json().get("job_status")
-        if status == "DONE":
-            break
-        if status in ("FAILED", "ERROR"):
-            raise RuntimeError(f"Ekstrakcja zakończona błędem (status={status})")
-        time.sleep(3)
-    else:
-        raise TimeoutError("Przekroczono limit oczekiwania na ekstrakcję (90 s).")
-
-    response = requests.get(
-        f"{BASE_URL}/legal_analysis/extract/{run_id}",
-        headers=auth_headers,
-        verify=CA_CERT,
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    return response.json()["extracted"]
 
 
 # =====================================================================
@@ -893,23 +663,26 @@ def pokaz_podglad_pdf(
 # =====================================================================
 
 def panel_konfiguracji():
-    """Panel boczny: wyłącznie token do API.
+    """Panel boczny: token do API albo informacja o trybie offline.
 
-    Tryb demo został usunięty — dublował logikę analizy i rozjeżdżał się ze
-    schematem (zwracał pola, których już nie ma, i nie zwracał nowych).
-    Aplikacja działa wyłącznie na prawdziwym API.
+    Tryb offline (HIPOTEKA_OFFLINE=1) podmienia wyłącznie źródła danych
+    — hurtownię i API — na pliki z katalogu dev/. Logika i widoki są te same
+    co na produkcji, więc nie wraca problem dawnego trybu demo.
     """
     st.sidebar.markdown("## ⚙️ Konfiguracja")
 
-    token = wczytaj_token()
+    token = zrodla.wczytaj_token()
 
-    if token:
-        st.sidebar.success("Token wczytany z token.txt")
+    if OFFLINE:
+        st.sidebar.warning("Tryb offline: dane przykładowe z katalogu dev/, bez hurtowni i API.")
+
+    elif token:
+        st.sidebar.success(f"Token wczytany z {PLIK_TOKENU.name}")
 
     else:
         st.sidebar.error(
-            f"Brak poprawnego tokenu w {PLIK_TOKENU.name}. "
-            'Dodaj plik z kluczem "access_token" obok skryptu.'
+            f"Brak poprawnego tokenu w {PLIK_TOKENU}. "
+            'Dodaj plik JSON z kluczem "access_token".'
         )
 
     return token
@@ -978,34 +751,34 @@ def sekcja_numer_wniosku():
         "Numer wniosku",
         placeholder="np. KHB1553044",
         label_visibility="collapsed"
-    )
+    ).strip()
 
 def sekcja_dane_uniflow(nr_wniosku):
 
+    # Dane poprzedniego wniosku czyścimy przy każdym wyjściu bez trafienia —
+    # inaczej trafiłyby do promptu analizy dla innego numeru.
     if not nr_wniosku:
+        stan.ustaw_uniflow(None)
         return
 
-    df_wnioski = load_wnioskodawcy()
-    kwota_kredytu = load_kwoty_kredytu(
-        nr_wniosku
-    )
-    st.session_state["kwota_kredytu_wn"] = kwota_kredytu
+    if not czy_poprawny_numer_wniosku(nr_wniosku):
+        stan.ustaw_uniflow(None)
+        st.error("Numer wniosku może zawierać tylko litery, cyfry i znaki / _ . -")
+        return
 
-    rekord = df_wnioski[
-        df_wnioski["NR_WNIOSKU"].astype(str).str.strip()
-        == nr_wniosku.strip()
-    ]
+    rekord = zrodla.load_wnioskodawcy(nr_wniosku)
 
     if rekord.empty:
+        stan.ustaw_uniflow(None)
         st.warning(f"Nie znaleziono wniosku {nr_wniosku}")
         return
-    
-    st.session_state["uniflow"] = {
+
+    stan.ustaw_uniflow({
         "numer_wniosku": nr_wniosku,
         "wnioskodawcy": rekord[
             ["IMIE", "NAZWISKO", "PESEL", "STAN_CYWILNY"]
         ].to_dict("records")
-    }
+    })
     
 
     st.markdown(
@@ -1240,7 +1013,7 @@ def ustaw_fraze_szukania(wartosc):
     st.session_state["fraza_ocr"] = str(wartosc)
 
 
-def panel_szukajki(potwierdzone=None):
+def panel_szukajki(ocr_text, potwierdzone=None):
     """Szukajka w tekście OCR ze skokiem do strony.
 
     Nie podświetla frazy na skanie — to wymagałoby koordynatów z OCR.
@@ -1251,8 +1024,6 @@ def panel_szukajki(potwierdzone=None):
     jest jednym z zapisów pola-identyfikatora, szukamy od razu wszystkich jego
     zapisów — inaczej "123" nie znajdzie strony, na której OCR przeczytał "I23".
     """
-    ocr_text = st.session_state.get("ocr_text", "")
-
     if not ocr_text:
         return
 
@@ -1467,8 +1238,8 @@ def pokaz_liste_trafien(trafienia, biezacy):
                 )
 
 
-def potwierdzone_rozbieznosci(wynik):
-    """Skrót: potwierdzone rozbieżności dla wyniku, z tekstem OCR z session_state.
+def potwierdzone_rozbieznosci(analiza):
+    """Skrót: potwierdzone rozbieżności dla analizy, z jej własnym tekstem OCR.
 
     Weryfikacja jest liczona przy każdym wyświetleniu, a nie zapisywana
     w cache — kosztuje kilka wyrażeń regularnych, a dzięki temu wpis w cache
@@ -1476,8 +1247,8 @@ def potwierdzone_rozbieznosci(wynik):
     nie mają `rozbieznosci` — wtedy dostajemy po prostu pustą listę.
     """
     potwierdzone, _ = zweryfikuj_warianty(
-        st.session_state.get("ocr_text", ""),
-        wynik.get("rozbieznosci"),
+        analiza.ocr_text,
+        analiza.wynik.get("rozbieznosci"),
     )
     return potwierdzone
 
@@ -1564,12 +1335,15 @@ def panel_ustalen(ustalenia):
         )
 
 
-def widok_umowy_deweloperskiej(wynik, harmonogram):
+def widok_umowy_deweloperskiej(analiza):
+
+    wynik = analiza.wynik
+    harmonogram = wynik.get("harmonogram_transz", [])
 
     # Rozbieżności zgłoszone przez model, przepuszczone przez weryfikację
     # w tekście OCR — zasilają dymki przy polach, liczniki w nagłówkach sekcji
     # i szukajkę.
-    potwierdzone = potwierdzone_rozbieznosci(wynik)
+    potwierdzone = potwierdzone_rozbieznosci(analiza)
 
     ustalenia = zbierz_problemy(
         wynik,
@@ -2141,12 +1915,7 @@ def widok_json(wynik):
         expanded=True
     )
 
-def widok_ocr():
-
-    ocr_text = st.session_state.get(
-        "ocr_text",
-        ""
-    )
+def widok_ocr(ocr_text):
 
     st.text_area(
         "Treść OCR",
@@ -2155,25 +1924,12 @@ def widok_ocr():
     )
 
     
-def pokaz_wynik_dokumentu(typ_dokumentu, wynik):
+def pokaz_wynik_dokumentu(analiza):
 
-    if typ_dokumentu == "umowa_deweloperska":
-        widok_umowy_deweloperskiej(
-            wynik,
-            wynik.get("harmonogram_transz", [])
-        )
-
-    elif typ_dokumentu == "umowa_przedwstepna":
-        widok_json(wynik)
-
-    elif typ_dokumentu == "umowa_rezerwacyjna":
-        widok_json(wynik)
-
-    elif typ_dokumentu == "prospekt":
-        widok_json(wynik)
-
-    elif typ_dokumentu == "oswiadczenie_zbywcy":
-        widok_json(wynik)
+    if analiza.typ_dokumentu == "umowa_deweloperska":
+        widok_umowy_deweloperskiej(analiza)
+    else:
+        widok_json(analiza.wynik)
         
         
 def widok_podsumowania(tekst):
@@ -2209,189 +1965,78 @@ def widok_ryzyk(lista_ryzyk):
 # URUCHOMIENIE ANALIZY
 # =====================================================================
 
-def uruchom_analize(plik_bajty, nazwa_pliku, numer_wniosku, token, wymus_ponowna_analize=False):
-    """Analiza dokumentu: cache -> OCR -> ekstrakcja -> zapis do cache."""
+def uruchom_analize(plik_bajty, nazwa_pliku, numer_wniosku, token, typ_dokumentu, wymus_ponowna_analize=False):
+    """Uruchamia analizę (services.analiza) i zapisuje wynik w stanie sesji."""
     pasek = st.progress(0, text="Rozpoczynanie analizy...")
 
-    pdf_hash = policz_hash_pdf(plik_bajty)
-
-    id_analizy = str(uuid.uuid4())
-
-    typ_dokumentu = rozpoznaj_typ_dokumentu(nazwa_pliku)
-
-    schema = pobierz_schema(typ_dokumentu)
-
-    # Hash schematu wchodzi do klucza cache: po zmianie schematu (inne pola,
-    # inne opisy) stary wynik nie odpowiada już temu, o co prosimy model.
-    hash_schematu = policz_hash_schematu(schema)
-
-    cached_result = None
-
-    if not wymus_ponowna_analize:
-        cached_result = get_document_cache(
-            pdf_hash=pdf_hash,
-            nr_wniosku=numer_wniosku,
-            hash_schematu=hash_schematu
-        )
-
-    if cached_result is not None:
-
-        st.session_state["analiza_z_cache"] = True
-
-        st.info("📦 Dokument znaleziony w cache")
-
-        st.session_state["nazwa_pliku_analizowany"] = nazwa_pliku
-        st.session_state["typ_dokumentu"] = typ_dokumentu
-        st.session_state["tryb_analizy"] = "Cache Impala"
-        st.session_state["czas_analizy"] = datetime.now().strftime("%H:%M:%S")
-        st.session_state["id_analizy"] = id_analizy
-
-        if "wyniki_ekstrakcji" not in st.session_state:
-            st.session_state["wyniki_ekstrakcji"] = {}
-
-        st.session_state["ocr_text"] = (
-            cached_result["ocr_text"]
-        )
-
-        st.session_state["wyniki_ekstrakcji"][nazwa_pliku] = (
-            cached_result["wynik"]
-        )
-        st.rerun()
-
     try:
-        pasek.progress(20, text="Krok 1/2: OCR...")
-
-        ocr_raw = wywolaj_ocr_api(
-            plik_bajty,
-            token,
-            numer_wniosku
-        )
-
-        ocr_z_numerami_stron = dodaj_markery_stron(
-            ocr_raw
-        )
-
-        st.session_state["ocr_text"] = ocr_z_numerami_stron
-
-        dane_uniflow = st.session_state.get(
-            "uniflow",
-            {}
-        )
-
-        tekst_uniflow = json.dumps(
-            dane_uniflow,
-            ensure_ascii=False,
-            indent=2
-        )
-
-        prompt_extract = f"""
-        DANE KLIENTÓW Z SYSTEMU UNIFLOW:
-
-        {tekst_uniflow}
-
-        PONIŻEJ ZNAJDUJE SIĘ TREŚĆ DOKUMENTU.
-
-        Porównuj dane klientów z UniFlow z danymi nabywców
-        występującymi w dokumencie.
-
-        TREŚĆ DOKUMENTU:
-
-        {ocr_z_numerami_stron}
-        """
-
-        pasek.progress(
-            70,
-            text=f"Krok 2/2: Ekstrakcja ({typ_dokumentu})..."
-        )
-
-        wynik = wywolaj_extract_api(
-            prompt_extract,
-            token,
-            numer_wniosku,
-            schema,
-            dane_uniflow
-        )
-
-        save_document_cache(
-            pdf_hash=pdf_hash,
+        analiza = analizuj(
+            plik_bajty=plik_bajty,
+            nazwa_pliku=nazwa_pliku,
             nr_wniosku=numer_wniosku,
-            hash_schematu=hash_schematu,
-            id_analizy=id_analizy,
-            document_type=typ_dokumentu,
-            # markery [STRONA_X] muszą trafić do cache — bez nich
-            # szukajka i klik w pole nie wskażą strony
-            ocr_text=ocr_z_numerami_stron,
-            extracted_data=wynik
+            token=token,
+            dane_uniflow=stan.dane_uniflow(numer_wniosku),
+            typ_dokumentu=typ_dokumentu,
+            zrodla=zrodla,
+            wymus=wymus_ponowna_analize,
+            postep=lambda procent, opis: pasek.progress(procent, text=opis),
         )
-
-        st.info("💾 Zapis wyniku do bazy")
-
     except Exception as blad:
         pasek.empty()
         st.error(f"Analiza nie powiodła się: {blad}")
         return
 
-    pasek.progress(100, text="Analiza zakończona.")
-    time.sleep(0.3)
     pasek.empty()
-
-    st.session_state["nazwa_pliku_analizowany"] = nazwa_pliku
-    st.session_state["typ_dokumentu"] = typ_dokumentu
-    st.session_state["tryb_analizy"] = "Prawdziwe API"
-    st.session_state["czas_analizy"] = datetime.now().strftime("%H:%M:%S")
-
-    if "wyniki_ekstrakcji" not in st.session_state:
-        st.session_state["wyniki_ekstrakcji"] = {}
-
-    st.session_state["wyniki_ekstrakcji"][nazwa_pliku] = wynik
-    st.session_state["analiza_z_cache"] = False
+    stan.zapisz_analize(analiza)
     st.rerun()
 
 
-def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, numer_wniosku, token):
-    juz_przeanalizowany = st.session_state.get("nazwa_pliku_analizowany") == nazwa_pliku
-     
-    if not juz_przeanalizowany:
+def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, pdf_hash, numer_wniosku, token, typ_dokumentu):
+    analiza = stan.biezaca_analiza(pdf_hash, numer_wniosku)
+
+    if analiza is None:
         st.markdown('<p class="naglowek-sekcji">🔑 Kluczowe dane</p>', unsafe_allow_html=True)
         st.markdown(
             '<div class="tekst-pomocniczy">Dokument jest wczytany. Uruchom analizę, aby odczytać '
             'kluczowe dane, podsumowanie i wykaz ryzyk.</div>',
             unsafe_allow_html=True,
         )
-        czy_gotowe = bool(token)
+
+        # Bez danych wniosku model nie ma z czym porównać nabywców, a wynik
+        # z pustą weryfikacją trafiłby do cache — dlatego analiza czeka na wniosek.
+        ma_wniosek = stan.dane_uniflow(numer_wniosku) is not None
+        czy_gotowe = bool(token) and ma_wniosek
+
         wymus_ponowna_analize = st.checkbox(
             "🔄 Wymuś ponowną analizę (pomiń cache)",
             value=False
         )
-        
-        if st.button("▶ Uruchom analizę dokumentu", type="primary", disabled=not czy_gotowe):
-            uruchom_analize(plik_bajty, nazwa_pliku, numer_wniosku, token, wymus_ponowna_analize)
-        if not czy_gotowe:
-            st.caption("Dodaj token.txt, aby korzystać z prawdziwego API.")
-        return
 
-    tryb_uzyty = st.session_state.get("tryb_analizy")
-    klasa = "badge-tryb-api"
+        if st.button("▶ Uruchom analizę dokumentu", type="primary", disabled=not czy_gotowe):
+            uruchom_analize(
+                plik_bajty, nazwa_pliku, numer_wniosku, token, typ_dokumentu, wymus_ponowna_analize
+            )
+        if not token:
+            st.caption("Dodaj token.txt, aby korzystać z prawdziwego API.")
+        if not ma_wniosek:
+            st.caption("Wprowadź numer wniosku — dane klientów z UniFlow są porównywane z dokumentem.")
+        return
 
     col_status, col_przycisk = st.columns([3, 1])
     with col_status:
         st.markdown(
             f'<div class="info-pliku" style="margin-top:8px;">✅ Analiza: '
-            f'{st.session_state["czas_analizy"]} &nbsp;'
-            f'<span class="{klasa}">{tryb_uzyty}</span></div>',
+            f'{analiza.czas} &nbsp;'
+            f'<span class="badge-tryb-api">{analiza.zrodlo}</span></div>',
             unsafe_allow_html=True,
         )
     with col_przycisk:
         if st.button("↺ Ponów"):
-            del st.session_state["nazwa_pliku_analizowany"]
+            stan.usun_analize(pdf_hash, numer_wniosku)
             st.rerun()
 
-    wynik = st.session_state["wyniki_ekstrakcji"][nazwa_pliku]
-
-    typ_dokumentu = rozpoznaj_typ_dokumentu(
-        nazwa_pliku
-    )
-
+    for ostrzezenie in analiza.ostrzezenia:
+        st.warning(ostrzezenie)
 
     tab_dane, tab_ocr, tab_json = st.tabs(
         [
@@ -2408,29 +2053,26 @@ def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, numer_wniosku, token):
             border=True
         ):
 
-            pokaz_wynik_dokumentu(
-                typ_dokumentu,
-                wynik
-            )
+            pokaz_wynik_dokumentu(analiza)
     with tab_ocr:
 
-        widok_ocr()
+        widok_ocr(analiza.ocr_text)
 
     with tab_json:
 
-        widok_json(wynik)
+        widok_json(analiza.wynik)
 
-def sekcja_podsumowanie_i_ryzyka(nazwa_pliku):
-    if st.session_state.get("nazwa_pliku_analizowany") is None:
+def sekcja_podsumowanie_i_ryzyka(analiza):
+    if analiza is None:
         return
 
-    wynik = st.session_state["wyniki_ekstrakcji"][nazwa_pliku]
+    wynik = analiza.wynik
     st.divider()
     widok_podsumowania(wynik.get("podsumowanie", ""))
     st.markdown("<div style='height:22px;'></div>", unsafe_allow_html=True)
     widok_ryzyk(wynik.get("potencjalne_ryzyka", []))
 
-def widok_weryfikacji_uniflow(wynik):
+def widok_weryfikacji_uniflow(analiza):
     """Panel ustaleń: wyłącznie rzeczy wymagające decyzji analityka.
 
     Zastępuje listę wszystkich wyników weryfikacji UniFlow. Zgodności nie są
@@ -2440,9 +2082,9 @@ def widok_weryfikacji_uniflow(wynik):
     """
 
     ustalenia = zbierz_problemy(
-        wynik,
-        wynik.get("weryfikacja_uniflow", []),
-        potwierdzone_rozbieznosci(wynik)
+        analiza.wynik,
+        analiza.wynik.get("weryfikacja_uniflow", []),
+        potwierdzone_rozbieznosci(analiza)
     )
 
     panel_ustalen(ustalenia)
@@ -2534,41 +2176,35 @@ def zakladka_umowa_deweloperska(
     nr_wniosku,
     token
 ):
+    # Typ dokumentu wynika z zakładki, a nie z nazwy pliku.
+    typ_dokumentu = "umowa_deweloperska"
 
     plik = sekcja_upload_widget()
-    
-    if plik:
-        st.session_state["umowa_deweloperska_plik"] = {
-            "nazwa": plik.name,
-            "bajty": plik.getvalue()
-        }
 
-    plik_dane = st.session_state.get(
-        "umowa_deweloperska_plik"
-    )
+    if plik:
+        stan.zapamietaj_plik(typ_dokumentu, plik.name, plik.getvalue())
+
+    plik_dane = stan.plik(typ_dokumentu)
 
     if not plik_dane:
         return
-    
 
     bajty_pdf = plik_dane["bajty"]
-
     nazwa_pliku = plik_dane["nazwa"]
-    
-    
-    # Panel ustaleń na pełnej szerokości — przed podziałem na kolumny.
-    wynik_do_panelu = st.session_state.get(
-        "wyniki_ekstrakcji", {}
-    ).get(nazwa_pliku)
+    pdf_hash = plik_dane["hash"]
 
-    if wynik_do_panelu:
-        potwierdzone_panel = potwierdzone_rozbieznosci(wynik_do_panelu)
-        ustalenia_panel = zbierz_problemy(
-            wynik_do_panelu,
-            wynik_do_panelu.get("weryfikacja_uniflow", []),
-            potwierdzone_panel
+    analiza = stan.biezaca_analiza(pdf_hash, nr_wniosku)
+    potwierdzone = potwierdzone_rozbieznosci(analiza) if analiza else None
+
+    # Panel ustaleń na pełnej szerokości — przed podziałem na kolumny.
+    if analiza:
+        panel_ustalen(
+            zbierz_problemy(
+                analiza.wynik,
+                analiza.wynik.get("weryfikacja_uniflow", []),
+                potwierdzone
+            )
         )
-        panel_ustalen(ustalenia_panel)
 
     col_podglad, col_dane = st.columns(
         [1, 1.05],
@@ -2579,18 +2215,10 @@ def zakladka_umowa_deweloperska(
 
         # Szukajka nad dokumentem — analityk wpisuje frazę zanim otworzy
         # pełny podgląd i od razu widzi, na której stronie szukać.
-        wynik_pliku = st.session_state.get(
-            "wyniki_ekstrakcji",
-            {}
-        ).get(nazwa_pliku)
-
-        if wynik_pliku:
-            panel_szukajki(
-                potwierdzone_rozbieznosci(wynik_pliku)
-            )
-
-        else:
-            panel_szukajki()
+        panel_szukajki(
+            analiza.ocr_text if analiza else "",
+            potwierdzone
+        )
 
         sekcja_podglad_dokumentu(
             bajty_pdf,
@@ -2601,46 +2229,43 @@ def zakladka_umowa_deweloperska(
         sekcja_akcja_i_kluczowe_dane(
             bajty_pdf,
             nazwa_pliku,
+            pdf_hash,
             nr_wniosku,
-            token
+            token,
+            typ_dokumentu
         )
 
-    sekcja_podsumowanie_i_ryzyka(
-        nazwa_pliku
-    )
+    sekcja_podsumowanie_i_ryzyka(analiza)
     
     
-def zakladka_podsumowanie():
+def zakladka_podsumowanie(nr_wniosku):
 
-    # st.markdown(
-    #     '<p class="naglowek-sekcji">📋 Podsumowanie wniosku</p>',
-    #     unsafe_allow_html=True,
-    # )
-
-    wynik = st.session_state.get(
-        "wyniki_ekstrakcji",
-        {}
+    plik_dane = stan.plik("umowa_deweloperska")
+    analiza = (
+        stan.biezaca_analiza(plik_dane["hash"], nr_wniosku)
+        if plik_dane
+        else None
     )
 
-    if not wynik:
+    if analiza is None:
         st.info(
             "Przeanalizuj dokument, aby zobaczyć podsumowanie."
         )
         return
 
-    pierwszy_wynik = next(
-        iter(wynik.values())
-    )
-    
-    widok_weryfikacji_uniflow(
-        pierwszy_wynik
-    )
+    widok_weryfikacji_uniflow(analiza)
         
 
 def main():
     token = panel_konfiguracji()
 
     banner_naglowek()
+
+    if OFFLINE:
+        st.warning(
+            "**Tryb offline** — dane wniosku i wynik ekstrakcji pochodzą z katalogu dev/, "
+            "a nie z hurtowni i API. Numer wniosku z danych przykładowych: KHB1553044."
+        )
 
     # dane_wniosku = pobierz_dane_wniosku()
     # sekcja_dane_wniosku(dane_wniosku)
@@ -2654,7 +2279,7 @@ def main():
     
     if zakladka == "📋 Podsumowanie":
 
-        zakladka_podsumowanie()
+        zakladka_podsumowanie(nr_wniosku)
 
     elif zakladka == "📄 Umowa deweloperska":
 
