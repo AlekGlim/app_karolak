@@ -1,0 +1,284 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "AnalizaUmowyDeweloperskiej",
+    "type": "object",
+    "properties": {
+        "numer_umowy": {
+            "type": "string",
+            "description": "Numer umowy deweloperskiej, numer znajduje się na początku dokumentu. Przykład: Repertorium A Nr 0000/2026"
+        },
+        "data_umowy": {
+            "type": "string",
+            "description": "Data zawarcia umowy, format DD-MM-RRRR"
+        },
+        "nazwa_dewelopera": {
+            "type": "string",
+            "description": "Nazwa dewelopera"
+        },
+        "nip_dewelopera": {
+            "type": "string",
+            "description": "Numer NIP dewelopera"
+        },
+        "nabywca_1": {
+            "type": "string",
+            "description": "Imię i nazwisko pierwszego nabywcy"
+        },
+        "pesel_1": {
+            "type": "string",
+            "description": "PESEL pierwszego nabywcy"
+        },
+        "nabywca_2": {
+            "type": "string",
+            "description": "Imię i nazwisko drugiego nabywcy"
+        },
+        "pesel_2": {
+            "type": "string",
+            "description": "PESEL drugiego nabywcy"
+        },
+        "rodzaj_nieruchomosci": {
+            "type": "string",
+            "description": "Rodzaj nieruchomości"
+        },
+        "wojewodztwo": {
+            "type": "string",
+            "description": "Województwo"
+        },
+        "miasto": {
+            "type": "string",
+            "description": "Miejscowość"
+        },
+        "ulica": {
+            "type": "string",
+            "description": "Nazwa ulicy, bez numeru budynku"
+        },
+        "numer_budynku": {
+            "type": "string",
+            "description": "Numer budynku. Na przykład: 20A"
+        },
+        "numer_lokalu": {
+            "type": "string",
+            "description": "Numer lokalu, jeżeli występuje"
+        },
+        "numer_dzialki": {
+            "type": "string",
+            "description": "Numer działki gruntu"
+        },
+        "numer_kw": {
+            "type": "string",
+            "description": "Numer księgi wieczystej (wszystkie, jeżeli kilka)"
+        },
+        "cena_nieruchomosci": {
+            "type": "string",
+            "description": "Cena nieruchomości w PLN"
+        },
+        "prawa_przynalezne": {
+            "type": "array",
+            "description": "Prawa lub udziały związane z nieruchomością główną, które nie stanowią odrębnego stanu prawnego i są istotne z perspektywy analizy zabezpieczenia. Uwzględniaj przede wszystkim miejsca postojowe, udziały w garażach wielostanowiskowych, garaże, komórki lokatorskie, boksy rowerowe, schowki oraz podobne składniki. Nie uwzględniaj balkonów, loggii, tarasów ani ogródków, chyba że dokument wyraźnie wskazuje na odrębne prawo lub odrębną wycenę tych elementów.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "rodzaj": {
+                        "type": "string",
+                        "description": "np. miejsce postojowe, udział w garażu wielostanowiskowym, komórka lokatorska, garaż, boks rowerowy"
+                    },
+                    "tytul_prawny": {
+                        "type": "string",
+                        "description": "np. prawo wyłącznego korzystania, udział w prawie własności, udział w nieruchomości wspólnej"
+                    },
+                    "oznaczenie": {
+                        "type": "string",
+                        "description": "Oznaczenie wynikające z dokumentu, np. A3, G26, MLAC/G26, K12."
+                    },
+                    "cena": {
+                        "type": "string",
+                        "description": "Cena zakupu lub deklarowana wartość zabezpieczenia przypisana do danego prawa, jeżeli została wskazana w dokumencie."
+                    }
+                }
+            }
+        },
+        "laczna_wartosc_transakcji": {
+            "type": "string",
+            "description": "Łączna wartość transakcji w PLN"
+        },
+        "bank_powiernika": {
+            "type": "string",
+            "description": "Bank prowadzący rachunek powierniczy"
+        },
+        "otwarty_numer_rachunku_powierniczego": {
+            "type": "string",
+            "description": "Numer otwartego rachunku powierniczego"
+        },
+        "numer_rachunku_powierniczego": {
+            "type": "string",
+            "description": "Numer indywidualnego rachunku powierniczego nadany do otwartego mieszkaniowego rachunku powierniczego"
+        },
+        "liczba_transz": {
+            "type": "string",
+            "description": "Liczba transz w harmonogramie"
+        },
+        "laczna_suma_harmonogramu": {
+            "type": "string",
+            "description": "Łączna suma transz w PLN"
+        },
+        "termin_przeniesienia_wlasnosci": {
+            "type": "string",
+            "description": "Data przeniesienia własności, na przykład: 20-09-2026"
+        },
+        "termin_odrebnej_wlasnosci": {
+            "type": "string",
+            "description": "Termin ustanowienia odrębnej własności"
+        },
+        "harmonogram_transz": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "numer_transzy": {
+                        "type": "integer"
+                    },
+                    "rodzaj": {
+                        "type": "string",
+                        "description": "Wszystkie płatności zaliczane na poczet ceny nieruchomości. Uwzględnij zarówno zadatek, opłatę rezerwacyjną, zaliczki, jak i transze harmonogramu. Opisz rodzaj transzy w skróconej formie na przykład,transza 1, transza 2. jeśli występuje to zadatek, opłata rezerwacyjna. Jeśli występuje zadatek lub opłata rezerwacyjna nie numeruj jej jako transza. Każda płatność powinna zostać zwrócona jako osobny element tablicy."
+                    },
+                    "kwota": {
+                        "type": "string"
+                    },
+                    "termin_platnosci": {
+                        "type": "string",
+                        "description": "Termin płatności w skróconej formie."
+                    }
+                }
+            }
+        },
+        "dodatkowe_nieruchomosci": {
+            "type": "array",
+            "description": "Samodzielne nieruchomości nabywane wraz z nieruchomością główną.Wypełniaj wyłącznie wtedy, gdy dokument wskazuje na odrębny przedmiot własności (odrębną nieruchomość, odrębną księgę wieczystą, odrębny lokal niemieszkalny, garaż                         lub komórkę stanowiącą samodzielny przedmiot obrotu). Nie wpisuj tutaj miejsc postojowych, ogródków, tarasów ani komórek objętych wyłącznie prawem do korzystania lub udziałem związanym z lokalem. Takie prawa należy umieszczać w sekcji                         prawa_przynalezne. ",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "rodzaj_nieruchomosci": {
+                        "type": "string"
+                    },
+                    "tytul_prawny": {
+                        "type": "string"
+                    },
+                    "numer_kw": {
+                        "type": "string"
+                    },
+                    "miasto": {
+                        "type": "string"
+                    },
+                    "ulica": {
+                        "type": "string"
+                    },
+                    "numer_budynku": {
+                        "type": "string"
+                    },
+                    "numer_lokalu": {
+                        "type": "string"
+                    },
+                    "oznaczenie": {
+                        "type": "string"
+                    },
+                    "cena_nieruchomosci": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "podsumowanie": {
+            "type": "string",
+            "description": "Zwięzłe podsumowanie dokumentu dla analityka kredytowego banku. Analizuj dokument wyłącznie z perspektywy banku jako przyszłego wierzyciela hipotecznego. Skoncentruj się na stanie prawnym nieruchomości, możliwości ustanowienia skutecznej hipoteki, warunkach uruchomienia środków, harmonogramie inwestycji, sposobie przeniesienia własności oraz innych elementach mających wpływ na bezpieczeństwo ekspozycji banku. Nie oceniaj dokumentu z perspektywy klienta. Wskaż jedynie informacje wynikające z dokumentu. 5-8 zdań, styl biznesowy, bez wypunktowań."
+        },
+        "potencjalne_ryzyka": {
+            "type": "array",
+            "description": "Lista wyłącznie istotnych ryzyk z perspektywy banku finansującego nieruchomość. Uwzględniaj tylko okoliczności mogące wpływać na skuteczność zabezpieczenia hipotecznego, możliwość ustanowienia hipoteki, bezpieczeństwo uruchamiania transz kredytu, przeniesienie własności nieruchomości, zakończenie inwestycji lub poziom ryzyka prawnego, formalnego albo finansowego banku. Nie traktuj jako ryzyka standardowych elementów umów deweloperskich, takich jak hipoteka banku finansującego inwestycję wraz z procedurą bezobciążeniowego wyodrębnienia lokalu, mieszkaniowy rachunek powierniczy, standardowy harmonogram inwestycji, użytkowanie wieczyste ujawnione w księdze wieczystej, typowe służebności przesyłu lub przejazdu, czy standardowe postanowienia wynikające z ustawy deweloperskiej. Nie zgłaszaj ryzyka wyłącznie dlatego, że dana okoliczność występuje. Ryzyko wskaż tylko wtedy, gdy dokument zawiera przesłanki świadczące o podwyższonym poziomie ryzyka względem typowej umowy deweloperskiej lub gdy istnieją braki, niejasności, odstępstwa od standardów rynkowych albo okoliczności mogące negatywnie wpłynąć na interes banku. Jeżeli dokument nie zawiera takich przesłanek, zwróć pustą listę.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "opis": {
+                        "type": "string",
+                        "description": "Rozpocznij od krótkiego hasła w formacie <h4>Nazwa ryzyka</h4>. Następnie opisz ryzyko w 1-2 zdaniach, koncentrując się na wpływie na zabezpieczenie hipoteczne, możliwość finansowania, uruchomienie środków lub skuteczność dochodzenia roszczeń przez bank. Nie opisuj informacji neutralnych ani standardowych elementów umów jako ryzyk."
+                    },
+                    "waga": {
+                        "type": "string",
+                        "description": "Poziom istotności z perspektywy banku: niska - wymaga jedynie odnotowania; srednia - wymaga dodatkowej weryfikacji lub dokumentów; wysoka - może wpływać na możliwość finansowania, ustanowienie zabezpieczenia hipotecznego, uruchomienie kredytu lub bezpieczeństwo ekspozycji banku. Typowa umowa deweloperska nie powinna generować ryzyk srednich lub wysokich bez wyraźnych przesłanek wynikających z dokumentu."
+                    }
+                }
+            }
+        },
+        "weryfikacja_uniflow": {
+            "type": "array",
+            "description": "Porównaj dane klientów z UniFlow a także ilość wnioskodawców z danymi odczytanymi z dokumentu. Dla każdego wyniku zwróć status, tytul oraz opis. Jeśli wyniki są powiązane, ( na przykład niezgodność imienia i nazwiska zwróć je w jednym statusie).  Pole status może przyjmować wyłącznie wartości: 'zgodne', 'niezgodne', 'brak_danych'. Pole tytul jest obowiązkowe i powinno zawierać krótki nagłówek 2-5 słów. Pole opis jest obowiązkowe i powinno zawierać krótkie wyjaśnienie biznesowe 1-2 zdania. Przykład: status='niezgodne', tytul='Niezgodność nazwiska', opis='Nazwisko pierwszego nabywcy różni się od danych UniFlow. Dodatkowy przykład: Jeśli imie i nazwisko w Uniflow to Jan Kowalski a imie i nazwisko wyekstrahowane z dokumentu to Jan Piotr Kowalski zwróć status żółty'",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string"
+                    },
+                    "tytul": {
+                        "type": "string"
+                    },
+                    "opis": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "status",
+                    "tytul",
+                    "opis"
+                ]
+            }
+        },
+        "rozbieznosci": {
+            "type": "array",
+            "description": "Pola, których wartość jest w dokumencie wskazana niejednolicie. Dotyczy wyłącznie pól: data_umowy, termin_przeniesienia_wlasnosci, termin_odrebnej_wlasnosci, numer_umowy, nip_dewelopera, pesel_1, pesel_2, numer_dzialki, numer_kw, numer_rachunku_powierniczego, otwarty_numer_rachunku_powierniczego, nabywca_1, nabywca_2, nazwa_dewelopera. Dla pozostałych pól nie zwracaj niczego. Dla każdego z tych pól wyszukaj w całym dokumencie wszystkie miejsca, w których występuje ta sama informacja, i przypisz każdy zapis różniący się od wartości głównej do jednej z dwóch kategorii: wartosci_ok albo wartosci_zle. Zasady dla pól z datą (data_umowy, termin_przeniesienia_wlasnosci, termin_odrebnej_wlasnosci): ok to ta sama data zapisana inaczej, np. '22 marca 2000' lub '22.03.2000' przy wartości głównej '22-03-2000'; zle to INNA data odnosząca się do tego samego faktu, np. '23/03/2000' jako data zawarcia tej samej umowy — zgłoś ją także wtedy, gdy wygląda to na pomyłkę odczytu jednej cyfry. Nie zgłaszaj dat innych zdarzeń (data urodzenia, wpisu do księgi wieczystej, termin transzy, aneks, data wystawienia dokumentu). Zasady dla pól-identyfikatorów (numer_umowy, nip_dewelopera, pesel_1, pesel_2, numer_dzialki, numer_kw, numer_rachunku_powierniczego, otwarty_numer_rachunku_powierniczego): ok to ten sam identyfikator różniący się wyłącznie formą — inne spacje, myślniki lub ukośniki, wielkość liter, inne grupowanie cyfr rachunku; zle to odczyt różniący się znakami, wyglądający na pomyłkę OCR (np. 'I23' zamiast '123', 'O' zamiast '0', brakująca lub dodatkowa cyfra), albo inny identyfikator tego samego rodzaju występujący w tej samej roli. Nie zgłaszaj kolejnych numerów księgi wieczystej, gdy dokument dotyczy kilku ksiąg. Zasady dla pól z osobą lub podmiotem (nabywca_1, nabywca_2, nazwa_dewelopera): ok to ta sama osoba lub ten sam podmiot zapisany inaczej — odmiana przez przypadki ('Kowalskiego'), inna kolejność imienia i nazwiska, pominięte drugie imię, skrót imienia, pełna i skrócona nazwa firmy ('Alfa Sp. z o.o.' i 'Alfa'), drobna literówka w tym samym nazwisku; zle to INNA osoba lub inny podmiot występujący w TEJ SAMEJ roli, np. gdy przez większość dokumentu nabywcą jest 'Jan Kowalski', a w jednym miejscu jako nabywca występuje 'Nowak'. Zgłaszaj tylko wtedy, gdy z kontekstu jednoznacznie wynika, że chodzi o tę samą rolę. Nie zgłaszaj osób w innych rolach: drugiego nabywcy jako złej wartości dla pierwszego (i odwrotnie), małżonka, pełnomocnika, przedstawiciela dewelopera, notariusza, świadków, zbywcy, właściciela sąsiedniej nieruchomości. Każdą wartość w wartosci_ok i wartosci_zle przepisz dokładnie tak, jak stoi w tekście dokumentu — nie zmieniaj formatu, nie poprawiaj i nie zgaduj; wartość, której nie ma w tekście, jest błędem. Zwróć jeden element na pole. Nie zwracaj elementu, jeżeli obie listy byłyby puste. Jeżeli w dokumencie nie ma rozbieżności, zwróć pustą listę.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "pole": {
+                        "type": "string",
+                        "description": "Klucz pola ze schematu, którego dotyczy rozbieżność, np. data_umowy, numer_kw albo nabywca_1. Nie etykieta ani opis."
+                    },
+                    "wartosc_glowna": {
+                        "type": "string",
+                        "description": "Wartość prawidłowa, taka sama jak w polu głównym o kluczu podanym w polu 'pole'. Dla identyfikatorów wybierz zapis zgodny z oczekiwanym formatem: tam, gdzie powinna być cyfra, odrzuć odczyt z literą. Dla dat format DD-MM-RRRR. Dla osób pełne imię i nazwisko w mianowniku, dla firm pełna nazwa."
+                    },
+                    "wartosci_ok": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Zapisy oznaczające to samo co wartość główna, tylko zapisane inaczej — zgodnie z zasadami dla danego rodzaju pola. Każdy dokładnie jak w tekście dokumentu."
+                    },
+                    "wartosci_zle": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Zapisy niezgodne z wartością główną, wymagające sprawdzenia przez analityka — zgodnie z zasadami dla danego rodzaju pola. Każdy dokładnie jak w tekście dokumentu."
+                    },
+                    "uzasadnienie": {
+                        "type": "string",
+                        "description": "Jedno krótkie zdanie: gdzie w dokumencie występują różne wartości i co może być przyczyną rozbieżności."
+                    }
+                },
+                "required": [
+                    "pole",
+                    "wartosc_glowna",
+                    "wartosci_ok",
+                    "wartosci_zle"
+                ]
+            }
+        }
+    },
+    "required": [
+        "numer_umowy",
+        "nazwa_dewelopera",
+        "nabywca_1",
+        "podsumowanie",
+        "potencjalne_ryzyka",
+        "weryfikacja_uniflow"
+    ],
+    "additionalProperties": false
+}

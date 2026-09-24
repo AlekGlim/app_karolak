@@ -1,0 +1,8 @@
+# Sekrety — token nigdy nie trafia do repo
+token.txt
+*.pem
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
