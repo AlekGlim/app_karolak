@@ -104,8 +104,31 @@ Gdy nic nie wymaga uwagi, panel pokazuje jedną zieloną linię.
 | Walidacja PESEL | suma kontrolna i poprawność daty w numerze | Python | wysoki |
 | Walidacja NRB | długość i suma kontrolna rachunku powierniczego | Python | wysoki |
 | Suma harmonogramu | czy transze sumują się do wartości transakcji; podaje różnicę w zł | Python | średni |
-| Rozbieżności w dokumencie | to samo pole zapisane w dokumencie różnie, np. dwie daty zawarcia umowy, `O` zamiast `0` w numerze KW | model zgłasza, Python potwierdza w tekście | wysoki lub średni, zależnie od pola |
+| Rozbieżności w dokumencie | to samo pole zapisane w dokumencie różnie, np. dwie daty zawarcia umowy, `O` zamiast `0` w numerze KW | model wskazuje zapisy; Python potwierdza je w tekście, a dla dat i identyfikatorów sam rozstrzyga „ok” / „zła” | wysoki lub średni, zależnie od pola |
 | Weryfikacja z UniFlow | nabywcy z umowy a wnioskodawcy z wniosku: nazwiska, liczba osób | model | wg statusu |
+
+**Pola z trzema poziomami.** 14 kluczowych pól (daty, identyfikatory, strony umowy)
+model zwraca jako obiekt:
+
+```json
+"data_umowy": {
+  "wartosc_glowna": "2026-03-14",
+  "wartosci_ok": ["14 marca 2026"],
+  "wartosci_zle": ["15 marca 2026"],
+  "uzasadnienie": "W komparycji 14 marca, na końcu aktu 15 marca."
+}
+```
+
+- `wartosc_glowna` — wartość przyjęta; daty w formacie RRRR-MM-DD (zgodnie z timestampem
+  w UniFlow),
+- `wartosci_ok` — ta sama wartość zapisana w dokumencie inaczej (tylko do szukajki
+  i dymka przy polu, panel o nich milczy),
+- `wartosci_zle` — zapisy niezgodne; każdy tworzy ustalenie w panelu.
+
+Python sprawdza, czy każdy zapis naprawdę stoi w tekście (zmyślone odpadają), a dla dat
+i identyfikatorów sam decyduje o podziale: ta sama data w innym zapisie to „ok”, inna
+data — „zła”; te same znaki bez separatorów to „ok”, inne cyfry — „zła”. Przy osobach
+i firmach podział zostaje po stronie modelu, bo wymaga kontekstu roli.
 
 Każde ustalenie ma **tytuł, opis i sugerowany krok** (np. „Sprawdź na skanie,
 która wartość jest prawidłowa”). Ustalenia dotyczące konkretnego pola dodatkowo
@@ -251,32 +274,20 @@ Umowa demo (`dev/umowa_demo_skan.pdf`) ma celowe usterki do oglądania:
 Przy każdym pomyśle: **korzyść** dla analityka i **nakład** (S — dzień lub dwa,
 M — kilka dni, L — tydzień i więcej).
 
-### 6.1. Schemat: trzy poziomy dla każdego kluczowego pola (w toku)
+### 6.1. Schemat z trzema poziomami — zrobione, do obserwacji
 
-Kluczowe pola (daty, identyfikatory, strony umowy) stają się obiektem:
+Opis w 3.3. Po wdrożeniu warto sprawdzić na prawdziwych umowach:
 
-```json
-"data_umowy": {
-  "wartosc_glowna": "2026-03-14",
-  "wartosci_ok": ["14 marca 2026"],
-  "wartosci_zle": ["15 marca 2026"],
-  "uzasadnienie": "W komparycji 14 marca, na końcu aktu 15 marca."
-}
-```
-
-- **Korzyść:**
-  - jedno źródło prawdy zamiast osobnej listy `rozbieznosci`;
-  - model sprawdza spójność pola w tym samym momencie, w którym je odczytuje;
-  - daty w jednym formacie (ISO) ułatwiają porównania i zapis.
-- **Nakład:** M. Szukajka jest już na to gotowa. Do zrobienia zostają schemat,
-  funkcja odczytu wartości i widoki.
-- **Do ustalenia:** w jakim formacie UniFlow trzyma daty.
+- jak często Python poprawia podział modelu na „ok” i „zła” (jeśli często — doprecyzować
+  opisy w schemacie),
+- ile zapisów model zmyśla (odrzucone przy weryfikacji w tekście),
+- czy format RRRR-MM-DD jest wygodny przy przepisywaniu do UniFlow; jeśli formularz
+  oczekuje DD-MM-RRRR, przycisk „Kopiuj” może konwertować datę.
 
 ### 6.2. Więcej kontroli liczonych w Pythonie
 
 | Kontrola | Korzyść | Nakład |
 |---|---|---|
-| **Podział „ok / zła” sprawdzany przez Python** dla dat, kwot i identyfikatorów (ta sama data = ok, inna = zła) | model tylko wskazuje kandydatów, werdykt jest pewny | S |
 | **Suma kontrolna NIP** dewelopera | wyłapuje błędy odczytu i literówki | S |
 | **Cyfra kontrolna numeru KW** (numer księgi ma cyfrę kontrolną) | wyłapuje błędy OCR w numerze KW bez udziału modelu | S |
 | **PESEL z umowy a PESEL z UniFlow** porównywane bezpośrednio | pewna, natychmiastowa zgodność nabywców | S |
@@ -336,8 +347,8 @@ Kluczowe pola (daty, identyfikatory, strony umowy) stają się obiektem:
 
 ## 7. Proponowana kolejność prac
 
-1. **Teraz:** schemat z trzema poziomami (6.1) i podział „ok / zła” liczony
-   przez Python (6.2, pierwszy wiersz). Szukajka jest już przygotowana.
+1. **Zrobione:** szukajka po typie frazy, schemat z trzema poziomami i podział
+   „ok / zła” liczony przez Python. Teraz obserwacja na prawdziwych umowach (6.1).
 2. **Szybkie korzyści (S):**
    - kontrole NIP, KW, PESEL z UniFlow i terminów (6.2);
    - escapowanie HTML i test na prawdziwym OCR (6.7);

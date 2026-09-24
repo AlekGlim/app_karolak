@@ -111,7 +111,7 @@ def test_pelna_analiza_zapisuje_cache_z_markerami_stron():
     kroki = []
     analiza = _analizuj(zrodla, postep=lambda p, opis: kroki.append(p))
 
-    assert analiza.wynik == {"numer_umowy": "1/2026"}
+    assert analiza.wynik_surowy == {"numer_umowy": "1/2026"}
     assert analiza.ocr_text == "\n\n[STRONA_1]\nstrona pierwsza\n\n[STRONA_2]\nstrona druga"
     assert analiza.zrodlo == "Atrapa"
     assert analiza.ostrzezenia == []
@@ -124,21 +124,21 @@ def test_trafienie_w_cache_pomija_ocr_i_ekstrakcje():
     zrodla = Zrodla(cache={"wynik": {"z": "cache"}, "ocr_text": "[STRONA_1]\nx"})
     analiza = _analizuj(zrodla)
 
-    assert analiza.wynik == {"z": "cache"}
+    assert analiza.wynik_surowy == {"z": "cache"}
     assert analiza.zrodlo == "Cache Impala"
     assert zrodla.prompty == []
 
 
 def test_wymuszona_analiza_ignoruje_cache():
     zrodla = Zrodla(cache={"wynik": {"z": "cache"}, "ocr_text": ""})
-    assert _analizuj(zrodla, wymus=True).wynik == {"numer_umowy": "1/2026"}
+    assert _analizuj(zrodla, wymus=True).wynik_surowy == {"numer_umowy": "1/2026"}
 
 
 def test_blad_zapisu_do_cache_nie_kasuje_wyniku():
     zrodla = Zrodla(blad_zapisu=RuntimeError("Kerberos"))
     analiza = _analizuj(zrodla)
 
-    assert analiza.wynik == {"numer_umowy": "1/2026"}
+    assert analiza.wynik_surowy == {"numer_umowy": "1/2026"}
     assert len(analiza.ostrzezenia) == 1
     assert "Kerberos" in analiza.ostrzezenia[0]
 
@@ -169,6 +169,9 @@ def test_offline_wynik_zgodny_ze_schematem():
     wynik = app.offline_wywolaj_extract("", "t", "x", schema)
     assert set(wynik) <= set(schema["properties"])
     assert set(schema["required"]) <= set(wynik)
+    for klucz, definicja in schema["properties"].items():
+        if definicja.get("type") == "object":
+            assert set(wynik[klucz]) == set(definicja["properties"]), klucz
 
 
 # --- hurtownia, data_loader.py (moduły serwera podstawione atrapami) ---

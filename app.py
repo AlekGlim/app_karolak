@@ -25,9 +25,12 @@ Lokalnie, bez hurtowni: HIPOTEKA_OFFLINE=1 streamlit run app.py — podmienia
 wyłącznie źródła danych na pliki z dev/. Szczegóły: docs/INSTRUKCJA.md.
 
 Numery stron nie pochodzą od modelu: wartość pola jest szukana w tekście OCR,
-a strona wynika z najbliższego markera [STRONA_X]. Rozbieżności w dokumencie
-(to samo pole wskazane niejednolicie) zgłasza model w liście `rozbieznosci`,
-a Python weryfikuje, czy każda zgłoszona wartość naprawdę stoi w tekście.
+a strona wynika z najbliższego markera [STRONA_X]. Kluczowe pola (daty,
+identyfikatory, strony umowy) model zwraca z trzema poziomami: wartość główna,
+inne zapisy tej samej wartości (wartosci_ok) i zapisy niezgodne (wartosci_zle).
+Python sprawdza, czy każdy zapis naprawdę stoi w tekście, a dla dat
+i identyfikatorów sam rozstrzyga, który zapis jest "ok", a który "zły"
+(splaszcz_wynik, rozstrzygnij_podzial).
 
 MOTYW: aplikacja podąża za motywem przeglądarki (jasny/ciemny). Aby to działało,
 NIE ustawiaj base="light" w .streamlit/config.toml. Plik ustawia tylko kolor
@@ -633,19 +636,31 @@ MIN_CYFR_IDENTYFIKATORA = 6
 SEPARATOR_IDENTYFIKATORA = r"(?:[ \t]*[-/.][ \t]*|\s+)"
 
 
-def klucz_identyfikatora(fraza):
-    """Same litery i cyfry identyfikatora ("wa1m000123456") albo None."""
-    if fraza is None:
+def klucz_zapisu_identyfikatora(tekst):
+    """Same litery i cyfry, gdy tekst ma kształt identyfikatora; inaczej None.
+
+    Bez progu liczby cyfr — dla pól, o których wiemy, że są identyfikatorami
+    (numer działki "12/5" też się tu kwalifikuje).
+    """
+    if tekst is None:
         return None
 
-    czesci = re.split(SEPARATOR_IDENTYFIKATORA, normalizuj_do_szukania(fraza).strip())
+    czesci = re.split(SEPARATOR_IDENTYFIKATORA, normalizuj_do_szukania(tekst).strip())
     if not all(re.fullmatch(r"[a-z0-9]+", c) for c in czesci):
         return None
     if not all(any(z.isdigit() for z in c) or len(c) <= 2 for c in czesci):
         return None
 
-    klucz = "".join(czesci)
-    if sum(z.isdigit() for z in klucz) < MIN_CYFR_IDENTYFIKATORA:
+    return "".join(czesci)
+
+
+def klucz_identyfikatora(fraza):
+    """Same litery i cyfry identyfikatora ("wa1m000123456") albo None.
+
+    Dla dowolnej frazy z szukajki, więc z progiem cyfr: "20A" to nie identyfikator.
+    """
+    klucz = klucz_zapisu_identyfikatora(fraza)
+    if not klucz or sum(z.isdigit() for z in klucz) < MIN_CYFR_IDENTYFIKATORA:
         return None
 
     return klucz
@@ -829,6 +844,19 @@ POLA_DAT = {
     "data_umowy",
     "termin_przeniesienia_wlasnosci",
     "termin_odrebnej_wlasnosci",
+}
+
+
+# Numer umowy ("Repertorium A Nr 1123/2026") celowo poza listą — ma słowa,
+# a nie sam numer, więc porównanie znak po znaku nie ma tu sensu.
+POLA_IDENTYFIKATOROW = {
+    "nip_dewelopera",
+    "pesel_1",
+    "pesel_2",
+    "numer_dzialki",
+    "numer_kw",
+    "numer_rachunku_powierniczego",
+    "otwarty_numer_rachunku_powierniczego",
 }
 
 
@@ -1046,6 +1074,105 @@ def wariant_stoi_w_tekscie(znorm_ocr, znorm_wariant):
 
     wzor = r"(?<!\w)" + re.escape(znorm_wariant) + r"(?!\w)"
     return re.search(wzor, znorm_ocr) is not None
+
+
+def splaszcz_wynik(wynik):
+    """Wynik modelu w kształcie, którego używa reszta aplikacji.
+
+    Kluczowe pola schematu (daty, identyfikatory, strony umowy) model zwraca
+    jako obiekt:
+        {"wartosc_glowna": ..., "wartosci_ok": [...], "wartosci_zle": [...],
+         "uzasadnienie": ...}
+    Tu każde takie pole zamienia się w samą wartość główną, a inne zapisy
+    trafiają do listy `rozbieznosci` w formacie
+        {"pole", "wartosc_glowna", "wartosci_ok", "wartosci_zle", "uzasadnienie"}
+    — tylko dla pól, w których któraś lista jest niepusta.
+
+    Dzięki temu widoki, walidacje, kopiowanie do UniFlow i szukajka czytają
+    zwykłe pola, a obiekt z poziomami zna tylko ta funkcja. Wynik w starym
+    kształcie (płaskie pola + lista `rozbieznosci` od modelu, np. z cache)
+    przechodzi bez zmian.
+    """
+    if not isinstance(wynik, dict):
+        return wynik
+
+    plaski = {}
+    rozbieznosci = list(wynik.get("rozbieznosci") or [])
+
+    for klucz, wartosc in wynik.items():
+        if klucz == "rozbieznosci":
+            continue
+        if not (isinstance(wartosc, dict) and "wartosc_glowna" in wartosc):
+            plaski[klucz] = wartosc
+            continue
+
+        glowna = str(wartosc.get("wartosc_glowna") or "").strip()
+        plaski[klucz] = glowna or None
+
+        ok = wartosc.get("wartosci_ok") or []
+        zle = wartosc.get("wartosci_zle") or []
+        if ok or zle:
+            rozbieznosci.append({
+                "pole": klucz,
+                "wartosc_glowna": glowna,
+                "wartosci_ok": ok,
+                "wartosci_zle": zle,
+                "uzasadnienie": wartosc.get("uzasadnienie") or "",
+            })
+
+    plaski["rozbieznosci"] = rozbieznosci
+    return plaski
+
+
+def rodzaj_zapisu(pole, glowna, wartosc):
+    """"ok" / "zla" rozstrzygnięte przez Pythona albo None, gdy się nie da.
+
+    Daty: ta sama data w innym zapisie to "ok", inna data — "zla".
+    Identyfikatory: te same znaki po zdjęciu separatorów to "ok"; inne cyfry
+    to "zla" ("0O123456" ma o jedno zero mniej niż "00123456"). Gdy różnią się
+    tylko litery ("dz. 12/5" przy "12/5"), decyzję zostawiamy modelowi.
+    Osoby i firmy — zawsze model: tam potrzebny jest kontekst roli.
+    """
+    if pole in POLA_DAT:
+        data_glowna, data_zapisu = parsuj_date(glowna), parsuj_date(wartosc)
+        if data_glowna and data_zapisu:
+            return "ok" if data_glowna == data_zapisu else "zla"
+
+    if pole in POLA_IDENTYFIKATOROW:
+        klucz_glowny = klucz_zapisu_identyfikatora(glowna)
+        klucz_zapisu = klucz_zapisu_identyfikatora(wartosc)
+        if klucz_glowny and klucz_zapisu:
+            if klucz_glowny == klucz_zapisu:
+                return "ok"
+            cyfry = lambda tekst: "".join(filter(str.isdigit, tekst))
+            if cyfry(klucz_glowny) != cyfry(klucz_zapisu):
+                return "zla"
+
+    return None
+
+
+def rozstrzygnij_podzial(potwierdzone):
+    """Poprawia podział modelu na "ok" i "złe" tam, gdzie Python wie lepiej.
+
+    Model wskazuje kandydatów, a dla dat i identyfikatorów werdykt liczy
+    rodzaj_zapisu — model potrafi wpisać "15 marca 2026" jako inny zapis
+    daty 2026-03-14. Pozostałe wartości zostają tam, gdzie umieścił je model.
+    Element, w którym zostały same wartości "ok", nadal jest zwracany: służy
+    szukajce i dymkowi przy polu, a panel ustaleń i tak pokazuje tylko "złe".
+    """
+    wynik = []
+
+    for wpis in potwierdzone:
+        ok, zle = [], []
+        for wartosc, zdanie_modelu in (
+            [(w, "ok") for w in wpis["wartosci_ok"]] + [(w, "zla") for w in wpis["wartosci_zle"]]
+        ):
+            rodzaj = rodzaj_zapisu(wpis["pole"], wpis["wartosc_glowna"], wartosc) or zdanie_modelu
+            (ok if rodzaj == "ok" else zle).append(wartosc)
+
+        wynik.append({**wpis, "wartosci_ok": ok, "wartosci_zle": zle})
+
+    return wynik
 
 
 def zweryfikuj_warianty(ocr_text, rozbieznosci):
@@ -1729,11 +1856,12 @@ class Analiza:
     nazwa_pliku: str
     typ_dokumentu: str
     ocr_text: str
-    wynik: dict
+    wynik: dict                 # po splaszcz_wynik — tego używają widoki
     zrodlo: str
     czas: str
     id_analizy: str
     ostrzezenia: list = field(default_factory=list)
+    wynik_surowy: dict = None   # dokładnie to, co zwrócił model (zakładka JSON, cache)
 
 
 def _bez_postepu(procent, opis):
@@ -1772,7 +1900,8 @@ def analizuj(
             nazwa_pliku=nazwa_pliku,
             typ_dokumentu=typ_dokumentu,
             ocr_text=ocr_text,
-            wynik=wynik,
+            wynik=splaszcz_wynik(wynik),
+            wynik_surowy=wynik,
             zrodlo=zrodlo,
             czas=datetime.now().strftime("%H:%M:%S"),
             id_analizy=id_analizy,
@@ -3069,8 +3198,9 @@ def karta(tytul, wiersze):
 # Numery stron wyznaczamy deterministycznie: wartość pola jest szukana
 # w tekście OCR, a strona wynika z najbliższego markera [STRONA_X] przed
 # trafieniem. Rozbieżności (to samo pole wskazane w dokumencie niejednolicie)
-# zgłasza model w liście `rozbieznosci`, a Python sprawdza tylko, czy każda
-# zgłoszona wartość naprawdę stoi w tekście.
+# zgłasza model przy każdym kluczowym polu (wartosci_ok / wartosci_zle),
+# a Python sprawdza, czy każda wartość naprawdę stoi w tekście, i rozstrzyga
+# podział dla dat i identyfikatorów.
 
 
 def potwierdzone_rozbieznosci(analiza):
@@ -3078,14 +3208,15 @@ def potwierdzone_rozbieznosci(analiza):
 
     Weryfikacja jest liczona przy każdym wyświetleniu, a nie zapisywana
     w cache — kosztuje kilka wyrażeń regularnych, a dzięki temu wpis w cache
-    zostaje surowym wynikiem modelu. Wyniki zapisane przed zmianą schematu
-    nie mają `rozbieznosci` — wtedy dostajemy po prostu pustą listę.
+    zostaje surowym wynikiem modelu. Lista `rozbieznosci` pochodzi
+    z splaszcz_wynik (pola z trzema poziomami); po weryfikacji w tekście
+    podział "ok"/"złe" dla dat i identyfikatorów poprawia rozstrzygnij_podzial.
     """
     potwierdzone, _ = zweryfikuj_warianty(
         analiza.ocr_text,
         analiza.wynik.get("rozbieznosci"),
     )
-    return potwierdzone
+    return rozstrzygnij_podzial(potwierdzone)
 
 
 def etykieta_sekcji(ikona, nazwa, klucze, wynik, problemy):
@@ -3802,7 +3933,7 @@ def pokaz_wynik_dokumentu(analiza):
     if analiza.typ_dokumentu == "umowa_deweloperska":
         widok_umowy_deweloperskiej(analiza)
     else:
-        widok_json(analiza.wynik)
+        widok_json(analiza.wynik_surowy or analiza.wynik)
         
         
 def widok_podsumowania(tekst):
@@ -3933,7 +4064,7 @@ def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, pdf_hash, numer_wniosk
 
     with tab_json:
 
-        widok_json(analiza.wynik)
+        widok_json(analiza.wynik_surowy or analiza.wynik)
 
 def sekcja_podsumowanie_i_ryzyka(analiza):
     if analiza is None:
