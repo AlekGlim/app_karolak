@@ -30,15 +30,12 @@ import json
 import time
 import tempfile
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 import html
 import base64
 import streamlit as st
 import pandas as pd
 import requests
-import os
-import re
-import unicodedata
 import hashlib
 import uuid
 
@@ -48,6 +45,11 @@ from data_loader import (
     get_document_cache,
     save_document_cache
     )
+from core.rozbieznosci import zweryfikuj_warianty
+from core.szukanie import szukaj_w_ocr_z_wariantami, warianty_do_szukania
+from core.tekst import dodaj_markery_stron
+from core.ustalenia import problemy_wg_pola, stan_sekcji, zbierz_problemy
+from core.walidacje import czy_wartosc_transakcji_zgodna, waliduj_nrb, waliduj_pesel
 
 
 # Przycisk kopiowania wartości do UniFlow. Gdy pakietu nie ma w środowisku,
@@ -551,11 +553,6 @@ st.markdown(
 )
 
 
-    
-
-
-
-
 # =====================================================================
 # STAŁA KONFIGURACJA API
 # =====================================================================
@@ -661,10 +658,6 @@ def policz_hash_schematu(schema):
     ).hexdigest()
 
 
-
-
-
-
 def wczytaj_token():
     """Wczytuje access_token z pliku token.txt."""
     try:
@@ -706,7 +699,6 @@ def pobierz_dane_wniosku():
 # =====================================================================
 # TRYB PRAWDZIWEGO API
 # =====================================================================
-
 
 
 def wywolaj_ocr_api(plik_bajty, token, document_group_id):
@@ -833,8 +825,6 @@ def podglad_przez_obrazki(plik_bajty, wysokosc):
         "wybrana_strona_pdf",
         1
     )
-    
-    
 
 
     col1, col2, col3 = st.columns([1, 14, 1])
@@ -969,9 +959,6 @@ def kafelek(etykieta, wartosc):
 #     with col6:
 #         kafelek("Liczba wnioskodawców", dane["liczba_wnioskodawcow"])
 
-
-     
-        
 
 # =====================================================================
 # UPLOAD I PODGLĄD
@@ -1230,150 +1217,7 @@ def karta(tytul, wiersze):
         f'<div class="karta"><div class="karta-tytul">{tytul}</div>{"".join(wiersze)}</div>',
         unsafe_allow_html=True,
     )
-    
-    
 
-
-
-def waliduj_nrb(numer):
-
-    if not numer:
-        return "Brak numeru"
-
-    nrb = "".join(filter(str.isdigit, str(numer)))
-
-    if len(nrb) != 26:
-        return "❌ Niepoprawna długość"
-
-    try:
-        liczba = nrb[2:] + "2521" + nrb[:2]
-
-        if int(liczba) % 97 == 1:
-            return "Poprawny strukturalnie"
-
-        return "Niepoprawna suma kontrolna"
-
-    except Exception:
-        return "Błąd walidacji"   
-    
-
-def waliduj_pesel(pesel):
-
-    if not pesel:
-        return "⚪"
-
-    pesel = "".join(filter(str.isdigit, str(pesel)))
-
-    if len(pesel) != 11:
-        return "❌"
-
-    try:
-
-        rok = int(pesel[0:2])
-        miesiac = int(pesel[2:4])
-        dzien = int(pesel[4:6])
-
-        if 1 <= miesiac <= 12:
-            rok += 1900
-
-        elif 21 <= miesiac <= 32:
-            rok += 2000
-            miesiac -= 20
-
-        elif 41 <= miesiac <= 52:
-            rok += 2100
-            miesiac -= 40
-
-        elif 61 <= miesiac <= 72:
-            rok += 2200
-            miesiac -= 60
-
-        elif 81 <= miesiac <= 92:
-            rok += 1800
-            miesiac -= 80
-
-        else:
-            return "❌"
-
-        datetime(rok, miesiac, dzien)
-
-        wagi = [1, 3, 7, 9, 1, 3, 7, 9, 1, 3]
-
-        suma = sum(
-            int(c) * w
-            for c, w in zip(pesel[:10], wagi)
-        )
-
-        kontrolna = (10 - (suma % 10)) % 10
-
-        if kontrolna != int(pesel[10]):
-            return "❌"
-
-        return "✅"
-
-    except Exception:
-        return "❌"
-
-import re
-
-import re
-
-def dodaj_markery_stron(ocr_text):
-
-    strony = re.split(
-        r'&lt;!--\s*PageBreak\s*--&gt;',
-        ocr_text
-    )
-
-    wynik = []
-
-    for nr, tresc in enumerate(
-        strony,
-        start=1
-    ):
-        wynik.append(
-            f"\n\n[STRONA_{nr}]\n{tresc}"
-        )
-
-    return "".join(wynik)
-    
-
-def wyciagnij_kwote(tekst):
-
-    if not tekst:
-        return 0
-
-    tekst = str(tekst)
-
-    match = re.search(r'(\d[\d .]*,\d{2})', tekst)
-
-    if not match:
-        return 0
-
-    kwota = match.group(1)
-
-    kwota = kwota.replace(" ", "")
-    kwota = kwota.replace(".", "")
-    kwota = kwota.replace(",", "")
-
-    return int(kwota)
-
-def czy_wartosc_transakcji_zgodna(wynik):
-
-    cena = wyciagnij_kwote(
-        wynik.get("laczna_wartosc_transakcji")
-        or wynik.get("cena_nieruchomosci")
-    )
-
-    if cena == 0:
-        return "⚪"
-
-    suma = sum(
-        wyciagnij_kwote(t.get("kwota"))
-        for t in wynik.get("harmonogram_transz", [])
-    )
-
-    return "✅" if cena == suma else "❌"
 
 # =====================================================================
 # SZUKAJKA W TEKŚCIE OCR, ROZBIEŻNOŚCI I PANEL USTALEŃ
@@ -1383,84 +1227,6 @@ def czy_wartosc_transakcji_zgodna(wynik):
 # trafieniem. Rozbieżności (to samo pole wskazane w dokumencie niejednolicie)
 # zgłasza model w liście `rozbieznosci`, a Python sprawdza tylko, czy każda
 # zgłoszona wartość naprawdę stoi w tekście.
-
-DLUGOSC_KONTEKSTU = 110
-
-
-def normalizuj_do_szukania(tekst):
-    """Bez diakrytyków i wielkości liter — analityk wpisuje frazę z pamięci."""
-    rozlozony = unicodedata.normalize("NFKD", str(tekst))
-    return "".join(z for z in rozlozony if not unicodedata.combining(z)).lower()
-
-
-def wzorzec_z_odmiana(fraza):
-    """Regex tolerujący polską odmianę: dłuższe słowa skracamy o końcówkę.
-
-    W akcie notarialnym stoi "w Warszawie", a w polu mamy "Warszawa".
-    Bez tego połowa pól tekstowych nie znalazłaby się w dokumencie.
-    """
-    slowa = normalizuj_do_szukania(fraza).split()
-    if not slowa:
-        return None
-
-    czesci = []
-    for slowo in slowa:
-        rdzen = re.escape(slowo[:-2]) if len(slowo) > 5 else re.escape(slowo)
-        czesci.append(rdzen + r"\w*")
-
-    return r"\b" + r"\s+".join(czesci)
-
-
-def strona_dla_pozycji(ocr_text, pozycja):
-    """Numer strony dla znalezionej pozycji — po ostatnim markerze [STRONA_X].
-
-    Zwraca None, gdy tekst nie ma markerów (np. wynik z cache zapisany
-    przed ich dodaniem).
-    """
-    fragment = ocr_text[:pozycja]
-    markery = re.findall(r"\[STRONA_(\d+)\]", fragment)
-    return int(markery[-1]) if markery else None
-
-
-def szukaj_w_ocr(ocr_text, fraza):
-    """Trafienia frazy w tekście OCR, z numerem strony i fragmentem kontekstu."""
-    if not ocr_text or not fraza or not str(fraza).strip():
-        return []
-
-    znorm = normalizuj_do_szukania(ocr_text)
-    trafienia = []
-
-    def zbierz(wzor, dokladne):
-        for dop in re.finditer(wzor, znorm):
-            start, koniec = dop.span()
-            od = max(0, start - DLUGOSC_KONTEKSTU)
-            do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
-            trafienia.append({
-                "pozycja": start,
-                "strona": strona_dla_pozycji(ocr_text, start),
-                "przed": ocr_text[od:start],
-                "trafienie": ocr_text[start:koniec],
-                "po": ocr_text[koniec:do],
-                "dokladne": dokladne,
-            })
-
-    wzor_doslowny = re.escape(normalizuj_do_szukania(fraza).strip())
-    if wzor_doslowny:
-        zbierz(wzor_doslowny, True)
-
-    # Odmiana dopiero jako zapas — inaczej "Nowak" łapałoby "Nowakowski".
-    if not trafienia:
-        wzor_odmiana = wzorzec_z_odmiana(fraza)
-        if wzor_odmiana:
-            zbierz(wzor_odmiana, False)
-
-    widziane, unikalne = set(), []
-    for t in sorted(trafienia, key=lambda t: t["pozycja"]):
-        if t["pozycja"] not in widziane:
-            widziane.add(t["pozycja"])
-            unikalne.append(t)
-
-    return unikalne
 
 
 def ustaw_fraze_szukania(wartosc):
@@ -1701,160 +1467,6 @@ def pokaz_liste_trafien(trafienia, biezacy):
                 )
 
 
-# Waga ustalenia dla wartości "złych", zależna od tego, czego dotyczy pole.
-# Inna data albo inna osoba to sprzeczność w treści dokumentu — waga wysoka.
-# Identyfikator odczytany inaczej to najczęściej wada OCR — waga średnia.
-POZIOM_ROZBIEZNOSCI = {
-    "data_umowy": "wysoki",
-    "termin_przeniesienia_wlasnosci": "wysoki",
-    "termin_odrebnej_wlasnosci": "wysoki",
-    "nabywca_1": "wysoki",
-    "nabywca_2": "wysoki",
-    "nazwa_dewelopera": "wysoki",
-    "numer_umowy": "sredni",
-    "nip_dewelopera": "sredni",
-    "pesel_1": "sredni",
-    "pesel_2": "sredni",
-    "numer_dzialki": "sredni",
-    "numer_kw": "sredni",
-    "numer_rachunku_powierniczego": "sredni",
-    "otwarty_numer_rachunku_powierniczego": "sredni",
-}
-
-
-ETYKIETY_POL_ROZBIEZNOSCI = {
-    "numer_umowy": "Numer umowy",
-    "nip_dewelopera": "NIP dewelopera",
-    "pesel_1": "PESEL nabywcy 1",
-    "pesel_2": "PESEL nabywcy 2",
-    "numer_dzialki": "Numer działki",
-    "numer_kw": "Numer księgi wieczystej",
-    "numer_rachunku_powierniczego": "Numer rachunku powierniczego",
-    "otwarty_numer_rachunku_powierniczego": "Otwarty numer rachunku powierniczego",
-    "data_umowy": "Data umowy",
-    "termin_przeniesienia_wlasnosci": "Termin przeniesienia własności",
-    "termin_odrebnej_wlasnosci": "Termin ustanowienia odrębnej własności",
-    "nabywca_1": "Nabywca 1",
-    "nabywca_2": "Nabywca 2",
-    "nazwa_dewelopera": "Deweloper",
-}
-
-
-def normalizuj_do_porownania(tekst):
-    """Wielkość liter i układ białych znaków nie mają znaczenia — reszta tak.
-
-    Celowo NIE zdejmujemy diakrytyków ani nie skracamy końcówek (jak robi to
-    normalizuj_do_szukania). Tu pytamy "czy ten zapis naprawdę tam stoi",
-    więc im ostrzejsze porównanie, tym mniej fałszywych potwierdzeń.
-    """
-    return re.sub(r"\s+", " ", str(tekst)).strip().lower()
-
-
-def wariant_stoi_w_tekscie(znorm_ocr, znorm_wariant):
-    """Czy wariant występuje w tekście jako osobny token.
-
-    Sprawdzamy, czy tuż przed i tuż po trafieniu nie stoi litera ani cyfra —
-    bez tego wariant "123" zostałby potwierdzony przez "1234" albo "A123",
-    a to inny numer.
-    """
-    if not znorm_wariant:
-        return False
-
-    wzor = r"(?<!\w)" + re.escape(znorm_wariant) + r"(?!\w)"
-    return re.search(wzor, znorm_ocr) is not None
-
-
-def zweryfikuj_warianty(ocr_text, rozbieznosci):
-    """Odsiewa wartości, których nie ma w tekście OCR.
-
-    Zwraca dwie listy:
-      potwierdzone — elementy w formacie z modelu, ale wyłącznie z wartościami
-                     potwierdzonymi w tekście; element bez żadnej potwierdzonej
-                     wartości znika w całości
-      odrzucone    — [{"pole": ..., "wartosc": ...}] — wartości zmyślone
-                     przez model; ich liczba to tania miara jakości promptu
-
-    Zachowujemy podział modelu na `wartosci_ok` i `wartosci_zle` — nie
-    poprawiamy go. Sprawdzamy wyłącznie obecność: wartość musi stać w tekście
-    dosłownie, jako osobny token (wielkość liter i układ spacji nie mają
-    znaczenia). Prompt każe modelowi przepisywać wartości dokładnie z tekstu,
-    więc wartość, której tam nie ma, jest błędem modelu, a nie innym zapisem.
-
-    Wartość identyczna z wartością główną (po normalizacji) i powtórzenia są
-    pomijane po cichu — to nie halucynacja, tylko szum, więc nie zawyżają
-    licznika odrzuconych. Wartość obecna zarazem w "ok" i w "złe" liczy się
-    jako "złe": lepiej pokazać analitykowi za dużo niż przemilczeć.
-
-    Bez tekstu OCR nic nie da się potwierdzić, więc zwracamy puste listy
-    (a nie "wszystko odrzucone" — brak tekstu to nie wina modelu).
-    """
-    potwierdzone = []
-    odrzucone = []
-
-    if not ocr_text or not isinstance(rozbieznosci, list):
-        return potwierdzone, odrzucone
-
-    znorm_ocr = normalizuj_do_porownania(ocr_text)
-
-    def lista_wartosci(surowa):
-        # model bywa niedbały — zamiast listy może dać napis albo nic
-        if not surowa:
-            return []
-        if isinstance(surowa, str):
-            return [surowa]
-        return list(surowa)
-
-    for wpis in rozbieznosci:
-        if not isinstance(wpis, dict):
-            continue
-
-        pole = wpis.get("pole")
-        glowna = str(wpis.get("wartosc_glowna") or "").strip()
-
-        widziane = {normalizuj_do_porownania(glowna)}
-        potwierdzone_ok = []
-        potwierdzone_zle = []
-
-        # "złe" przetwarzamy pierwsze, żeby wartość obecna w obu listach
-        # została w "złe" (patrz docstring)
-        for wartosc in lista_wartosci(wpis.get("wartosci_zle")):
-            wartosc = str(wartosc).strip()
-            znorm = normalizuj_do_porownania(wartosc)
-
-            if not znorm or znorm in widziane:
-                continue
-            widziane.add(znorm)
-
-            if wariant_stoi_w_tekscie(znorm_ocr, znorm):
-                potwierdzone_zle.append(wartosc)
-            else:
-                odrzucone.append({"pole": pole, "wartosc": wartosc})
-
-        for wartosc in lista_wartosci(wpis.get("wartosci_ok")):
-            wartosc = str(wartosc).strip()
-            znorm = normalizuj_do_porownania(wartosc)
-
-            if not znorm or znorm in widziane:
-                continue
-            widziane.add(znorm)
-
-            if wariant_stoi_w_tekscie(znorm_ocr, znorm):
-                potwierdzone_ok.append(wartosc)
-            else:
-                odrzucone.append({"pole": pole, "wartosc": wartosc})
-
-        if potwierdzone_ok or potwierdzone_zle:
-            potwierdzone.append({
-                "pole": pole,
-                "wartosc_glowna": glowna,
-                "wartosci_ok": potwierdzone_ok,
-                "wartosci_zle": potwierdzone_zle,
-                "uzasadnienie": str(wpis.get("uzasadnienie") or "").strip(),
-            })
-
-    return potwierdzone, odrzucone
-
-
 def potwierdzone_rozbieznosci(wynik):
     """Skrót: potwierdzone rozbieżności dla wyniku, z tekstem OCR z session_state.
 
@@ -1881,335 +1493,6 @@ RODZAJE_TRAFIEN = {
 }
 
 
-def warianty_do_szukania(fraza, potwierdzone):
-    """Zapisy do wyszukania: [{"fraza": ..., "rodzaj": ...}].
-
-    Gdy wpisana fraza jest jednym z zapisów pola z rozbieżnością, szukamy
-    wszystkich jego zapisów — także niezgodnych, bo analityk chce zobaczyć,
-    gdzie w dokumencie one stoją. Rodzaj pozwala je potem rozróżnić kolorem;
-    bez tego "Nowak" wyglądałby na liście trafień tak samo jak "Kowalski".
-
-    Gdy fraza nie należy do żadnego pola z rozbieżnością, zwraca samą frazę —
-    szukajka działa wtedy jak dotychczas.
-    """
-    znorm_fraza = normalizuj_do_porownania(fraza)
-
-    for wpis in (potwierdzone or []):
-        zapisy = [{"fraza": wpis["wartosc_glowna"], "rodzaj": "glowna"}]
-
-        for wartosc in wpis["wartosci_ok"]:
-            zapisy.append({"fraza": wartosc, "rodzaj": "ok"})
-
-        for wartosc in wpis["wartosci_zle"]:
-            zapisy.append({"fraza": wartosc, "rodzaj": "zla"})
-
-        if znorm_fraza in [normalizuj_do_porownania(z["fraza"]) for z in zapisy]:
-            return zapisy
-
-    return [{"fraza": fraza, "rodzaj": "szukana"}]
-
-
-def szukaj_w_ocr_z_wariantami(ocr_text, zapisy):
-    """Trafienia dla kilku zapisów naraz, posortowane po pozycji w tekście.
-
-    `zapisy` w formacie z warianty_do_szukania. Każdy zapis szukamy osobno
-    przez szukaj_w_ocr, więc reguły (dosłownie, odmiana tylko jako zapas)
-    zostają te same. Rodzaj zapisu przechodzi na trafienie.
-
-    Gdy dwa zapisy trafią w to samo miejsce, wygrywa ten wcześniejszy na
-    liście — dlatego warianty_do_szukania zwraca najpierw wartość główną,
-    potem "ok", a na końcu niezgodne.
-    """
-    wszystkie = []
-
-    for zapis in zapisy:
-        trafienia_zapisu = szukaj_w_ocr(ocr_text, zapis["fraza"])
-
-        # fraza będąca pełną datą znajduje ją w każdym zapisie
-        # ("22-03-2000" znajdzie też "22 marca 2000") — patrz 2B
-        data = parsuj_date(zapis["fraza"])
-        if data:
-            trafienia_zapisu += szukaj_daty_w_ocr(ocr_text, data)
-
-        for trafienie in trafienia_zapisu:
-            trafienie["fraza"] = zapis["fraza"]
-            trafienie["rodzaj"] = zapis["rodzaj"]
-            wszystkie.append(trafienie)
-
-    widziane, unikalne = set(), []
-    for t in sorted(wszystkie, key=lambda t: t["pozycja"]):
-        if t["pozycja"] not in widziane:
-            widziane.add(t["pozycja"])
-            unikalne.append(t)
-
-    return unikalne
-
-
-def strona_dla_wartosci(wartosc, potwierdzone=None, rodzaj=None):
-    """Strona pierwszego trafienia wartości w tekście OCR albo None.
-
-    W pełni deterministyczne: ta sama wartość i ten sam tekst dają zawsze
-    tę samą stronę. Trafienia bez markera strony pomijamy — to tekst sprzed
-    pierwszego markera albo wynik z cache zapisany bez markerów; zwrócenie
-    None jest wtedy uczciwsze niż zgadywanie.
-
-    `rodzaj` ("data" albo "kwota") włącza szukanie odporne na zapis: data
-    zwrócona jako 22-03-2000 zostanie znaleziona jako "22 marca 2000",
-    a kwota "450 000,00 zł" jako "450.000,00". Gdy to nie da trafienia
-    (albo wartości nie da się odczytać), szukamy zwykłym tekstem.
-
-    Pierwsze trafienie to świadomy wybór: wartości powtarzają się w całym
-    dokumencie (miasto, nazwa dewelopera), a analityk zwykle chce zobaczyć,
-    gdzie wartość pojawia się po raz pierwszy. Kolejne strony znajdzie
-    w szukajce.
-    """
-    ocr_text = st.session_state.get("ocr_text", "")
-
-    if rodzaj == "data":
-        data = parsuj_date(wartosc)
-        if data:
-            for trafienie in szukaj_daty_w_ocr(ocr_text, data):
-                if trafienie["strona"]:
-                    return trafienie["strona"]
-
-    if rodzaj == "kwota":
-        strona = strona_dla_kwoty(ocr_text, wartosc)
-        if strona:
-            return strona
-
-    zapisy = warianty_do_szukania(str(wartosc), potwierdzone)
-    trafienia = szukaj_w_ocr_z_wariantami(ocr_text, zapisy)
-
-    # Najpierw wartość przyjęta i jej inne zapisy: klik w pole ma pokazać to,
-    # co w polu stoi. Na wartość niezgodną skaczemy dopiero, gdy nic innego
-    # nie znaleziono — inaczej analityk trafiłby na "Nowaka" bez ostrzeżenia.
-    for trafienie in trafienia:
-        if trafienie["strona"] and trafienie["rodzaj"] != "zla":
-            return trafienie["strona"]
-
-    for trafienie in trafienia:
-        if trafienie["strona"]:
-            return trafienie["strona"]
-
-    return None
-
-
-POLA_DAT = {
-    "data_umowy",
-    "termin_przeniesienia_wlasnosci",
-    "termin_odrebnej_wlasnosci",
-}
-
-
-POLA_KWOT = {
-    "cena_nieruchomosci",
-    "laczna_wartosc_transakcji",
-    "laczna_suma_harmonogramu",
-}
-
-
-# Polskie nazwy miesięcy w dopełniaczu, już bez diakrytyków — szukamy w tekście
-# przepuszczonym przez normalizuj_do_szukania ("września" -> "wrzesnia").
-NUMERY_MIESIECY = {
-    "stycznia": 1, "lutego": 2, "marca": 3, "kwietnia": 4,
-    "maja": 5, "czerwca": 6, "lipca": 7, "sierpnia": 8,
-    "wrzesnia": 9, "pazdziernika": 10, "listopada": 11, "grudnia": 12,
-}
-
-
-# Dwa zapisy daty w jednym wyrażeniu:
-#   22-03-2000 / 22.03.2000 / 22/03/2000 / 22 . 03 . 2000  (grupy 1, 2, 4)
-#   22 marca 2000                                          (grupy 1, 3, 4)
-# Lookbehind blokuje trafienia w środku dłuższego ciągu liczb (np. numeru
-# rachunku), lookahead — w środku roku (20003).
-WZORZEC_DATY = re.compile(
-    r"(?<![\d.,/-])(\d{1,2})"
-    r"(?:[ ]?[-./][ ]?(\d{1,2})[ ]?[-./][ ]?|[ ]+(" + "|".join(NUMERY_MIESIECY) + r")[ ]+)"
-    r"(\d{4})(?!\d)"
-)
-
-
-def znajdz_daty(ocr_text):
-    """Wszystkie daty w tekście: [{"data": date, "pozycja": ..., "koniec": ...}].
-
-    Pozycje odnoszą się do oryginalnego tekstu (normalizacja zdejmuje
-    diakrytyki, ale nie zmienia długości). Wyrażenia, które wyglądają jak data,
-    a nią nie są (31-02-2000), są pomijane.
-    """
-    if not ocr_text:
-        return []
-
-    znorm = normalizuj_do_szukania(ocr_text)
-    daty = []
-
-    for dop in WZORZEC_DATY.finditer(znorm):
-        dzien = int(dop.group(1))
-        miesiac = int(dop.group(2)) if dop.group(2) else NUMERY_MIESIECY[dop.group(3)]
-        rok = int(dop.group(4))
-
-        try:
-            data = date(rok, miesiac, dzien)
-        except ValueError:
-            continue
-
-        daty.append({"data": data, "pozycja": dop.start(), "koniec": dop.end()})
-
-    return daty
-
-
-def parsuj_date(tekst):
-    """Data z tekstu albo None.
-
-    Zwraca datę tylko wtedy, gdy tekst zawiera dokładnie jedną. "22-03-2000 r."
-    to jedna data; "od 22-03-2000 do 30-04-2000" to dwie, więc nie zgadujemy.
-    """
-    if not tekst:
-        return None
-
-    daty = znajdz_daty(str(tekst))
-    if len(daty) != 1:
-        return None
-
-    return daty[0]["data"]
-
-
-def szukaj_daty_w_ocr(ocr_text, data):
-    """Trafienia danej daty w tekście OCR — w każdym zapisie.
-
-    Zwraca ten sam kształt co szukaj_w_ocr, więc wynik można mieszać
-    z trafieniami zwykłego szukania.
-    """
-    trafienia = []
-
-    for wpis in znajdz_daty(ocr_text):
-        if wpis["data"] != data:
-            continue
-
-        start, koniec = wpis["pozycja"], wpis["koniec"]
-        od = max(0, start - DLUGOSC_KONTEKSTU)
-        do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
-
-        trafienia.append({
-            "pozycja": start,
-            "strona": strona_dla_pozycji(ocr_text, start),
-            "przed": ocr_text[od:start],
-            "trafienie": ocr_text[start:koniec],
-            "po": ocr_text[koniec:do],
-            "dokladne": True,
-        })
-
-    return trafienia
-
-
-def kwota_na_grosze(tekst):
-    """Kwota jako liczba groszy albo None.
-
-    Rozumie "450 000,00 zł", "450.000,00", "450000", "450 000". Ostatni
-    separator z 1-2 cyframi po nim to część ułamkowa; z trzema cyframi —
-    separator tysięcy ("45.000" to 45 tysięcy, nie 45 zł).
-
-    Własna funkcja, a nie wyciagnij_kwote z aplikacji: tamta wymaga groszy
-    w zapisie (kwota bez ",00" daje 0 — błąd z listy).
-    """
-    if tekst is None:
-        return None
-
-    czysty = re.sub(r"(?i)z[łl]\b|pln|\s", "", str(tekst))
-    dop = re.fullmatch(r"(\d+(?:[.,]\d{3})*)(?:[.,](\d{1,2}))?", czysty)
-    if not dop:
-        return None
-
-    zlote = int(re.sub(r"[.,]", "", dop.group(1)))
-    grosze = int(dop.group(2).ljust(2, "0")) if dop.group(2) else 0
-
-    return zlote * 100 + grosze
-
-
-def wzorzec_kwoty(grosze):
-    """Wyrażenie regularne dopasowujące daną kwotę w każdym zapisie.
-
-    Separator tysięcy może być spacją, kropką albo go nie być; część
-    ułamkowa jest opcjonalna, gdy grosze są zerowe. Lookbehind i lookahead
-    pilnują, żeby 500 nie dopasowało się do środka "45 500,00" ani "500 000".
-    """
-    zlote, gr = divmod(grosze, 100)
-
-    cyfry = str(zlote)
-    grupy = []
-    while len(cyfry) > 3:
-        grupy.insert(0, cyfry[-3:])
-        cyfry = cyfry[:-3]
-    grupy.insert(0, cyfry)
-
-    calkowita = r"[ .]?".join(grupy)
-    ulamek = r"(?:,00)?" if gr == 0 else f",{gr:02d}"
-
-    return r"(?<![\d,.])(?<!\d[ .])" + calkowita + ulamek + r"(?!\d|[ .]\d{3})"
-
-
-def strona_dla_kwoty(ocr_text, kwota, ktora=0):
-    """Strona `ktora`-tego (od zera) trafienia kwoty w tekście OCR albo None.
-
-    Gdy trafień jest mniej niż `ktora`+1, bierzemy ostatnie.
-    """
-    grosze = kwota_na_grosze(kwota)
-    if grosze is None or not ocr_text:
-        return None
-
-    znorm = normalizuj_do_szukania(ocr_text)
-
-    strony = []
-    for dop in re.finditer(wzorzec_kwoty(grosze), znorm):
-        strona = strona_dla_pozycji(ocr_text, dop.start())
-        if strona:
-            strony.append(strona)
-
-    if not strony:
-        return None
-
-    return strony[min(ktora, len(strony) - 1)]
-
-
-def strona_dla_tokenu(ocr_text, token):
-    """Strona pierwszego trafienia krótkiego oznaczenia (A3, G26, numer KW).
-
-    Szukamy jako osobnego tokenu, bo zwykłe szukanie podciągu znalazłoby
-    "A3" w "A30" i w "KA3" — a tak krótkie oznaczenia to główna zawartość
-    elementów tablic.
-    """
-    if not token or not str(token).strip() or not ocr_text:
-        return None
-
-    wzor = r"(?<!\w)" + re.escape(normalizuj_do_szukania(token).strip()) + r"(?!\w)"
-
-    for dop in re.finditer(wzor, normalizuj_do_szukania(ocr_text)):
-        strona = strona_dla_pozycji(ocr_text, dop.start())
-        if strona:
-            return strona
-
-    return None
-
-
-def stan_sekcji(klucze, wynik, problemy):
-    """Zlicza pola sekcji: wypełnione, z problemem, brakujące.
-
-    `problemy` to zbiór kluczy pól z rozbieżnością (patrz zbierz_problemy).
-    """
-    ok = z_problemem = brak = 0
-
-    for klucz in klucze:
-        wartosc = wynik.get(klucz)
-
-        if klucz in problemy:
-            z_problemem += 1
-        elif wartosc and str(wartosc).strip():
-            ok += 1
-        else:
-            brak += 1
-
-    return ok, z_problemem, brak
-
-
 def etykieta_sekcji(ikona, nazwa, klucze, wynik, problemy):
     """Nagłówek niosący stan także wtedy, gdy sekcja jest zwinięta.
 
@@ -2233,162 +1516,6 @@ def etykieta_sekcji(ikona, nazwa, klucze, wynik, problemy):
     # sekcja z problemem otwiera się sama — praca do wykonania nie powinna
     # chować się za kliknięciem
     return etykieta, (z_problemem > 0 or brak > 0)
-
-
-# Mapowanie tytułów weryfikacji UniFlow na pola, których dotyczą.
-# Model zwraca luźne tytuły, więc dopasowujemy po słowach kluczowych —
-# dzięki temu ostrzeżenie trafia też do dymka przy konkretnym polu.
-SLOWA_KLUCZOWE_POL = {
-    "nabywca_1": ["nabywc", "wnioskodawc", "imi", "nazwisk"],
-    "pesel_1": ["pesel"],
-    "numer_kw": ["ksi", "wieczyst", "kw"],
-    "nazwa_dewelopera": ["dewelop"],
-    "cena_nieruchomosci": ["cen", "kwot", "warto"],
-    "miasto": ["miejscowo", "miast"],
-    "ulica": ["ulic", "adres"],
-}
-
-
-def dopasuj_pole(tytul, opis):
-    """Zgaduje, którego pola dotyczy wpis weryfikacji."""
-    tekst = normalizuj_do_szukania(f"{tytul} {opis}")
-
-    for pole, slowa in SLOWA_KLUCZOWE_POL.items():
-        if any(slowo in tekst for slowo in slowa):
-            return pole
-
-    return None
-
-
-def zbierz_problemy(wynik, lista_weryfikacji, potwierdzone=None):
-    """Buduje listę ustaleń wymagających decyzji analityka.
-
-    Łączy dwa źródła o różnej wiarygodności:
-      - weryfikację UniFlow zwróconą przez model (miękka, opisowa)
-      - twarde walidacje liczone w Pythonie (suma kontrolna, arytmetyka)
-
-    Te drugie są pewniejsze, więc idą na górę listy.
-
-    `potwierdzone` (wynik potwierdzone_rozbieznosci) dodaje ustalenia o polach,
-    które w dokumencie występują w niezgodnych wartościach (inna data, inna
-    osoba, identyfikator odczytany inaczej) — tylko dla wartości, które
-    naprawdę stoją w tekście OCR. Waga zależy od kategorii.
-
-    Zgodności NIE trafiają do wyniku — panel, który potwierdza oczywistości,
-    przestaje być czytany po kilku analizach.
-    """
-    ustalenia = []
-
-    # --- twarde walidacje ---
-    for numer in ("1", "2"):
-        pesel = wynik.get(f"pesel_{numer}")
-        if pesel and waliduj_pesel(pesel) == "❌":
-            ustalenia.append({
-                "pole": f"pesel_{numer}",
-                "poziom": "wysoki",
-                "tytul": f"PESEL nabywcy {numer} — błędna suma kontrolna",
-                "opis": f"Odczytana wartość: {pesel}. Numer jest wewnętrznie niespójny.",
-                "krok": "Sprawdź numer w dokumencie — prawdopodobny błąd odczytu OCR.",
-            })
-
-    rachunek = wynik.get("numer_rachunku_powierniczego")
-    if rachunek:
-        status = waliduj_nrb(rachunek)
-        if status not in ("Poprawny strukturalnie", "Brak numeru"):
-            ustalenia.append({
-                "pole": "numer_rachunku_powierniczego",
-                "poziom": "wysoki",
-                "tytul": "Rachunek powierniczy — błędny numer",
-                "opis": f"{status}. Odczytana wartość: {rachunek}",
-                "krok": "Zweryfikuj numer przed uruchomieniem transz.",
-            })
-
-    if czy_wartosc_transakcji_zgodna(wynik) == "❌":
-        cena = wyciagnij_kwote(
-            wynik.get("laczna_wartosc_transakcji") or wynik.get("cena_nieruchomosci")
-        )
-        suma = sum(
-            wyciagnij_kwote(t.get("kwota"))
-            for t in wynik.get("harmonogram_transz", [])
-        )
-        roznica = abs(cena - suma) / 100
-        ustalenia.append({
-            "pole": "laczna_wartosc_transakcji",
-            "poziom": "sredni",
-            "tytul": "Suma transz nie zgadza się z wartością transakcji",
-            "opis": (
-                f"Wartość transakcji: {cena / 100:,.2f} zł. "
-                f"Suma transz: {suma / 100:,.2f} zł. "
-                f"Różnica: {roznica:,.2f} zł."
-            ).replace(",", " "),
-            "krok": "Sprawdź harmonogram — możliwy błąd odczytu kwoty transzy.",
-        })
-
-    # --- rozbieżności w dokumencie, potwierdzone w tekście OCR ---
-    # Ustalenie tworzą tylko wartości "złe". Wartości "ok" (ta sama data
-    # w innym zapisie, odmiana nazwiska) to zwykła umowa i panel ma o nich
-    # milczeć — służą wyłącznie do szukania stron.
-    #
-    # Tytuł i opis zawierają tekst z OCR i od modelu, a panel_ustalen renderuje
-    # HTML bez escapowania — dlatego escapujemy tutaj. Gdy naprawisz to w samym
-    # panel_ustalen (błąd nr 4 z listy), usuń stąd html.escape, żeby nie
-    # escapować dwa razy.
-    for wpis in (potwierdzone or []):
-        if not wpis["wartosci_zle"]:
-            continue
-
-        pole = wpis["pole"]
-        etykieta = ETYKIETY_POL_ROZBIEZNOSCI.get(pole, pole)
-
-        opis = (
-            f"Przyjęta wartość: {wpis['wartosc_glowna']}. "
-            f"W dokumencie występuje też: {', '.join(wpis['wartosci_zle'])}."
-        )
-        if wpis["uzasadnienie"]:
-            opis += f" {wpis['uzasadnienie']}"
-
-        ustalenia.append({
-            "pole": pole,
-            "poziom": POZIOM_ROZBIEZNOSCI.get(pole, "sredni"),
-            "tytul": html.escape(f"Pole „{etykieta}” — niezgodne wartości w dokumencie"),
-            "opis": html.escape(opis),
-            "krok": "Sprawdź na skanie, która wartość jest prawidłowa (możliwa pomyłka OCR albo niespójność dokumentu).",
-        })
-
-    # --- weryfikacja UniFlow z modelu: tylko to, co NIE jest zgodne ---
-    for wpis in (lista_weryfikacji or []):
-        status = str(wpis.get("status", "")).lower().strip()
-
-        if status == "zgodne":
-            continue
-
-        tytul = wpis.get("tytul", "")
-        opis = wpis.get("opis", "")
-
-        ustalenia.append({
-            "pole": dopasuj_pole(tytul, opis),
-            "poziom": "wysoki" if status == "niezgodne" else "sredni",
-            "tytul": tytul,
-            "opis": opis,
-            "krok": (
-                "Ustal przyczynę rozbieżności i udokumentuj."
-                if status == "niezgodne"
-                else "Uzupełnij brakujące dane przed zakończeniem analizy."
-            ),
-        })
-
-    kolejnosc = {"wysoki": 0, "sredni": 1}
-    ustalenia.sort(key=lambda u: kolejnosc.get(u["poziom"], 2))
-    return ustalenia
-
-
-def problemy_wg_pola(ustalenia):
-    """Mapa pole -> ustalenie, do dymków przy polach."""
-    mapa = {}
-    for ustalenie in ustalenia:
-        if ustalenie.get("pole"):
-            mapa.setdefault(ustalenie["pole"], ustalenie)
-    return mapa
 
 
 # PODMIEŃ: istniejącą funkcję widok_weryfikacji_uniflow
@@ -3552,7 +2679,6 @@ def main():
 
         st.info("W przygotowaniu")
 
-    
-    
+
 if __name__ == "__main__":
     main()
