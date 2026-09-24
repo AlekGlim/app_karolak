@@ -538,17 +538,6 @@ st.markdown(
 )
 
 
-
-
-# =====================================================================
-# PODGLĄD PDF
-# =====================================================================
-
-
-
-
-
-
 # =====================================================================
 # PANEL BOCZNY
 # =====================================================================
@@ -752,8 +741,6 @@ def sekcja_upload_widget():
     return st.file_uploader("Wybierz plik PDF", type=["pdf"],  label_visibility="collapsed")
 
 
-
-
 # =====================================================================
 # WYNIKI EKSTRAKCJI
 # =====================================================================
@@ -879,22 +866,6 @@ def karta(tytul, wiersze):
 # zgłoszona wartość naprawdę stoi w tekście.
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def potwierdzone_rozbieznosci(analiza):
     """Skrót: potwierdzone rozbieżności dla analizy, z jej własnym tekstem OCR.
 
@@ -908,8 +879,6 @@ def potwierdzone_rozbieznosci(analiza):
         analiza.wynik.get("rozbieznosci"),
     )
     return potwierdzone
-
-
 
 
 def etykieta_sekcji(ikona, nazwa, klucze, wynik, problemy):
@@ -937,7 +906,6 @@ def etykieta_sekcji(ikona, nazwa, klucze, wynik, problemy):
     return etykieta, (z_problemem > 0 or brak > 0)
 
 
-# PODMIEŃ: istniejącą funkcję widok_weryfikacji_uniflow
 def panel_ustalen(ustalenia):
     """Wyłącznie rzeczy wymagające decyzji analityka.
 

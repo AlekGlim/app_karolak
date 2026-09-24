@@ -3,6 +3,9 @@
 Aplikacja Streamlit dla analityków hipotecznych: OCR dokumentu, ekstrakcja
 danych przez LLM, porównanie z danymi wniosku z UniFlow i szukajka w dokumencie.
 
+**Pełna instrukcja — uruchomienie, praca analityka, co jest w plikach i jak
+wprowadzać zmiany: [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).**
+
 ## Uruchomienie
 
 Na serwerze (hurtownia i API dostępne):
