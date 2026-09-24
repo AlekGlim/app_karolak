@@ -18,7 +18,7 @@ Lokalnie, bez hurtowni — tryb offline. Dane wniosku i wynik ekstrakcji
 pochodzą z katalogu `dev/`, OCR czyta warstwę tekstową wgranego PDF-a:
 
 ```
-HIPOTEKA_OFFLINE=1 streamlit run app.py        # Windows: set HIPOTEKA_OFFLINE=1
+HIPOTEKA_OFFLINE=1 streamlit run app.py        # PowerShell: $env:HIPOTEKA_OFFLINE="1"; streamlit run app.py
 ```
 
 Numer wniosku: `KHB1553044`, dokument: `dev/umowa_demo_skan.pdf` (skan, jak
@@ -31,17 +31,14 @@ w [docs/INSTRUKCJA.md](docs/INSTRUKCJA.md).
 
 ## Struktura
 
-| Katalog / plik   | Zawartość                                                          |
-|------------------|--------------------------------------------------------------------|
-| `app.py`         | widoki Streamlit                                                   |
-| `stan.py`        | stan sesji — analiza przypisana do pary (dokument, numer wniosku)  |
-| `ustawienia.py`  | adresy, ścieżki, limity czasu (nadpisywalne zmiennymi środowiska)  |
-| `core/`          | czysta logika bez Streamlita: szukanie, daty, kwoty, walidacje     |
-| `services/`      | hurtownia, API, odczyt PDF, przebieg analizy, tryb offline         |
-| `ui/`            | widoki wydzielone z app.py (panel dokumentu z szukajką)            |
-| `schemy/`        | schematy ekstrakcji                                                |
-| `dev/`           | dane do trybu offline                                              |
-| `tests/`         | testy pytest                                                       |
+| Plik / katalog      | Zawartość                                                             |
+|---------------------|-----------------------------------------------------------------------|
+| `app.py`            | cała aplikacja, podzielona na sekcje z nagłówkami (spis na górze pliku) |
+| `data_loader.py`    | hurtownia: dane wniosku z UniFlow i cache wyników (tylko serwer)     |
+| `schemy/`           | schematy ekstrakcji                                                   |
+| `dev/`              | dane do trybu offline                                                 |
+| `tests/`            | testy pytest                                                          |
+| `kopiuj_do_wysylki.py` | kopia plików z końcówką `.txt` do wysłania mailem                  |
 
 ## Szukajka
 

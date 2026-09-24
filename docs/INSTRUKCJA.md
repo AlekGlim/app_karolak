@@ -93,32 +93,29 @@ python kopiuj_do_wysylki.py
 ```
 
 Skrypt kopiuje pliki potrzebne do działania aplikacji do katalogu `paczka_wysylka/`
-i każdemu dopisuje `.txt` na końcu nazwy: `app.py` → `app.py.txt`,
-`core/szukanie.py` → `core/szukanie.py.txt`. Katalogi zostają takie same.
-Listę kopiowanych plików zmienia się w `WYMAGANE` na początku skryptu (testy są
-tam zakomentowane). `token.txt` i certyfikaty `*.pem` nigdy nie są kopiowane.
-
-Wyślij pliki mailem. Katalogi się w mailu nie przeniosą, więc najprościej wysłać
-każdy katalog (`core`, `services`, `ui`, `schemy`, `dev`, `docs`) osobnym mailem
-albo zapamiętać, który plik skąd pochodzi — patrz lista niżej.
+i każdemu dopisuje `.txt` na końcu nazwy (`app.py` → `app.py.txt`). Katalogi zostają
+takie same. Listę kopiowanych plików zmienia się w `WYMAGANE` na początku skryptu
+(testy są tam zakomentowane). `token.txt` i certyfikaty `*.pem` nigdy nie są kopiowane.
 
 **Na komputerze, na który przenosisz:**
 
-1. Odtwórz strukturę katalogów i zapisz pliki na swoich miejscach:
+1. Zapisz pliki w takim układzie:
 
    ```
    hipoteka_ai/
-     app.py.txt  stan.py.txt  ustawienia.py.txt  requirements.txt.txt  README.md.txt
-     core/       __init__.py.txt daty.py.txt indeks.py.txt kwoty.py.txt rozbieznosci.py.txt
-                 szukanie.py.txt tekst.py.txt ustalenia.py.txt walidacje.py.txt
-     services/   __init__.py.txt analiza.py.txt hurtownia.py.txt offline.py.txt pdf.py.txt
-                 schemy.py.txt sde_api.py.txt zrodla.py.txt
-     ui/         __init__.py.txt dokument.py.txt
-     schemy/     umowa_deweloperska.json.txt
-     dev/        generuj_umowe_demo.py.txt ocr_umowa_demo_skan.txt.txt umowa_demo.pdf.txt
-                 umowa_demo_skan.pdf.txt wnioskodawcy.json.txt wynik_umowa_deweloperska.json.txt
-     docs/       INSTRUKCJA.md.txt
+     app.py.txt
+     data_loader.py.txt
+     requirements.txt.txt
+     README.md.txt
+     schemy/  umowa_deweloperska.json.txt
+     docs/    INSTRUKCJA.md.txt
+     dev/     wnioskodawcy.json.txt  wynik_umowa_deweloperska.json.txt
+              ocr_umowa_demo_skan.txt.txt  umowa_demo.pdf.txt  umowa_demo_skan.pdf.txt
+              generuj_umowe_demo.py.txt
    ```
+
+   Do samego działania na serwerze wystarczą `app.py`, `data_loader.py`, `requirements.txt`
+   i `schemy/`. `dev/` jest potrzebny tylko w trybie offline, `docs/` i `README.md` to opis.
 
 2. Usuń końcówkę `.txt` z nazw — **tylko jedną, ostatnią** (`requirements.txt.txt` →
    `requirements.txt`). Ręcznie albo jednym poleceniem w katalogu `hipoteka_ai`:
@@ -139,9 +136,8 @@ albo zapamiętać, który plik skąd pochodzi — patrz lista niżej.
 
 3. Dalej jak zwykle: `pip install -r requirements.txt`, `streamlit run app.py`.
 
-Pliki `__init__.py` w `core`, `services` i `ui` są potrzebne, mimo że prawie puste —
-bez nich Python nie znajdzie modułów. Pliki PDF w `dev/` to tylko przykłady do trybu
-offline; jeśli poczta ich nie przepuści, aplikacja działa bez nich.
+Pliki PDF w `dev/` to tylko przykłady do trybu offline; jeśli poczta ich nie przepuści,
+aplikacja działa bez nich.
 
 ---
 
@@ -214,30 +210,8 @@ Szukajka zaczyna od wartości przyjętej; do niezgodnej przechodzi się „Nast�
 ### Mapa plików
 
 ```
-app.py                 widoki Streamlit: CSS, panel boczny, dane wniosku, karty pól,
-                       panel ustaleń, podsumowanie i ryzyka, zakładki, main()
-stan.py                stan sesji: analizy (klucz: hash PDF + numer wniosku),
-                       dane UniFlow, wgrany plik
-ustawienia.py          adres API, ścieżki, limity czasu, tryb offline
-ui/
-  dokument.py          panel dokumentu: szukajka, pasek nawigacji, podgląd strony, kolory
-core/                  czysta logika — bez Streamlita, w całości pokryta testami
-  tekst.py             normalizacja tekstu, markery [STRONA_X], czyszczenie fragmentu OCR
-  szukanie.py          szukanie frazy w tekście, warianty z rozbieżności, strona dla wartości
-  indeks.py            strony dokumentu (OCR albo warstwa tekstowa PDF), trafienia na stronach
-  daty.py              daty liczbowe i słowne
-  kwoty.py             odczyt kwot, wzorce kwot
-  walidacje.py         PESEL, NRB, suma transz, format numeru wniosku
-  rozbieznosci.py      sprawdzenie, czy wartości zgłoszone przez model stoją w tekście OCR
-  ustalenia.py         budowa listy ustaleń do panelu „Do wyjaśnienia”
-services/              wejście/wyjście
-  analiza.py           przebieg analizy: cache → OCR → ekstrakcja → zapis do cache
-  sde_api.py           endpointy OCR i Extract, odpytywanie statusu
-  hurtownia.py         zapytania do hurtowni: wnioskodawcy, cache wyników
-  schemy.py            wczytanie schematu, szablon promptu, klucz cache
-  pdf.py               liczba stron, warstwa tekstowa, obraz strony
-  offline.py           atrapy hurtowni i API dla trybu offline
-  zrodla.py            wybór: prawdziwe źródła albo offline
+app.py                 cała aplikacja (sekcje opisane niżej)
+data_loader.py         hurtownia: wnioskodawcy z UniFlow, cache wyników — tylko na serwerze
 schemy/
   umowa_deweloperska.json   schemat ekstrakcji = pytanie do modelu
 dev/                   dane trybu offline (patrz 3.10)
@@ -245,30 +219,57 @@ tests/                 testy pytest
 kopiuj_do_wysylki.py   kopia plików z końcówką .txt do wysłania mailem (patrz 1.)
 ```
 
+`app.py` jest podzielony na sekcje z nagłówkami w komentarzach
+(`# ====…` / `# NAZWA SEKCJI`). Najłatwiej przeskakiwać między nimi, szukając nazwy sekcji:
+
+| Sekcja w `app.py` | Co zawiera |
+|---|---|
+| USTAWIENIA | adres API, ścieżki (token, certyfikat, schematy, logo, `dev/`), limity czasu, `OFFLINE` |
+| TEKST OCR | normalizacja do szukania, markery `[STRONA_X]`, `tekst_do_wyswietlenia` (czyszczenie fragmentu OCR) |
+| KWOTY | odczyt kwot, wzorce kwot, `kwota_z_frazy` |
+| DATY | daty liczbowe i słowne (`14 marca 2026`) |
+| WALIDACJE | PESEL, NRB, suma transz, `WZORZEC_NUMERU_WNIOSKU` |
+| SZUKANIE W TEKŚCIE OCR | szukanie frazy, warianty z rozbieżności, `wzorzec_z_odmiana`, strona dla wartości |
+| INDEKS DOKUMENTU | strony dokumentu (OCR albo warstwa tekstowa PDF), trafienia na stronach |
+| ROZBIEŻNOŚCI | sprawdzenie, czy wartości zgłoszone przez model stoją w tekście OCR |
+| USTALENIA | panel „Do wyjaśnienia”: `zbierz_problemy`, `POZIOM_ROZBIEZNOSCI`, `SLOWA_KLUCZOWE_POL` |
+| SCHEMATY, PROMPT I KLUCZ CACHE | `SCHEMATY`, `SZABLON_PROMPTU`, `klucz_wersji` |
+| API | `wywolaj_ocr_api`, `wywolaj_extract_api`, odpytywanie statusu, odczyt tokenu |
+| PDF | liczba stron, warstwa tekstowa, obraz strony |
+| TRYB OFFLINE | atrapy hurtowni i API (`offline_*`) |
+| ŹRÓDŁA DANYCH | `zrodla()` — prawdziwe źródła (API + `data_loader.py`) albo offline |
+| ANALIZA | `Analiza`, `analizuj`: cache → OCR → ekstrakcja → zapis do cache |
+| STAN SESJI | analizy (klucz: hash PDF + numer wniosku), dane UniFlow, wgrany plik |
+| WIDOK: PANEL DOKUMENTU | szukajka, pasek nawigacji, podgląd strony, `RODZAJE_TRAFIEN` (kolory) |
+| WIDOKI APLIKACJI | CSS, panel boczny, dane wniosku, pola z danymi, panel ustaleń, podsumowanie i ryzyka, zakładki, `main()` |
+
+Sekcje od USTAWIEŃ do USTALEŃ i SCHEMATÓW nie używają Streamlita — to czysta logika,
+pokryta testami w `tests/`.
+
 ### Przepływ danych
 
 ```
-numer wniosku ──► services/hurtownia.load_wnioskodawcy ──► stan.ustaw_uniflow
-                                                                │
-PDF ──► services/analiza.analizuj ◄─────────────────────────────┘ (dane klientów do promptu)
+numer wniosku ──► zrodla().load_wnioskodawcy (data_loader.py) ──► ustaw_uniflow
+                                                                      │
+PDF ──► analizuj (ANALIZA) ◄──────────────────────────────────────────┘ (dane klientów do promptu)
           │
-          ├─ cache (hurtownia.get_document_cache) ── trafienie ──► wynik
+          ├─ cache (data_loader.get_document_cache) ── trafienie ──► wynik
           │
-          ├─ OCR (sde_api.wywolaj_ocr) ──► core/tekst.dodaj_markery_stron
-          ├─ prompt (schemy.zbuduj_prompt) ──► Extract (sde_api.wywolaj_extract)
-          └─ zapis do cache (hurtownia.save_document_cache)
+          ├─ OCR (wywolaj_ocr_api) ──► dodaj_markery_stron
+          ├─ prompt (zbuduj_prompt) ──► Extract (wywolaj_extract_api)
+          └─ zapis do cache (data_loader.save_document_cache)
                                    │
                                    ▼
-                     stan.zapisz_analize(Analiza)
+                        zapisz_analize(Analiza)
                                    │
        ┌───────────────────────────┼─────────────────────────────┐
        ▼                           ▼                             ▼
-panel „Do wyjaśnienia”    dane z dokumentu (app.py)     dokument + szukajka
-(core/ustalenia)                                        (ui/dokument.py)
+panel „Do wyjaśnienia”    dane z dokumentu              dokument + szukajka
+(USTALENIA)               (widok_umowy_deweloperskiej)  (panel_dokumentu)
 ```
 
-`Analiza` (w `services/analiza.py`) niesie wszystko o jednej analizie: `wynik` (JSON
-z modelu), `ocr_text` (z markerami stron), `zrodlo`, `czas`, `ostrzezenia`.
+`Analiza` niesie wszystko o jednej analizie: `wynik` (JSON z modelu), `ocr_text`
+(z markerami stron), `zrodlo`, `czas`, `ostrzezenia`.
 
 ---
 
@@ -278,8 +279,8 @@ Model dostaje prompt i schemat. **Opisy pól w schemacie to najważniejsza czę�
 
 - **Opis pola, reguły rozbieżności, ryzyka, podsumowanie** → `schemy/umowa_deweloperska.json`,
   pole `description` przy danym kluczu.
-- **Tekst wokół danych UniFlow i treści dokumentu** → `services/schemy.py`, stała
-  `SZABLON_PROMPTU`. Zostaw w niej `{tekst_uniflow}` i `{ocr_text}`.
+- **Tekst wokół danych UniFlow i treści dokumentu** → `app.py`, sekcja SCHEMATY, PROMPT
+  I KLUCZ CACHE, stała `SZABLON_PROMPTU`. Zostaw w niej `{tekst_uniflow}` i `{ocr_text}`.
 
 Po każdej zmianie schematu albo szablonu cache sam przestaje trafiać (klucz cache zawiera
 skrót schematu, szablonu i danych UniFlow), więc każdy dokument zostanie przy następnym
@@ -319,7 +320,7 @@ Przykład: pole `powierzchnia_uzytkowa`.
    w dokumencie):
    - w schemacie dopisz klucz do listy pól w opisie `rozbieznosci` i dodaj reguły dla
      tego rodzaju pola,
-   - w `core/ustalenia.py` dopisz etykietę do `ETYKIETY_POL_ROZBIEZNOSCI` i wagę do
+   - w `app.py`, sekcja USTALENIA, dopisz etykietę do `ETYKIETY_POL_ROZBIEZNOSCI` i wagę do
      `POZIOM_ROZBIEZNOSCI` (`"wysoki"` albo `"sredni"`).
 5. **Tryb offline** — dopisz przykładową wartość do `dev/wynik_umowa_deweloperska.json`,
    inaczej pola nie zobaczysz lokalnie. Test `test_offline_wynik_zgodny_ze_schematem`
@@ -330,7 +331,7 @@ Pole puste w wyniku (`None` albo `""`) nie jest wyświetlane — `pole_pdf` je p
 ### 3.3. Nowy typ dokumentu (np. umowa przedwstępna)
 
 1. Dodaj schemat `schemy/umowa_przedwstepna.json`. Nazwa pliku musi odpowiadać wpisowi
-   w słowniku `SCHEMATY` w `services/schemy.py` — typy są już tam wpisane.
+   w słowniku `SCHEMATY` w `app.py` — typy są już tam wpisane.
 2. W `app.py` dodaj funkcję zakładki — najprościej skopiować `zakladka_umowa_deweloperska`
    i zmienić `typ_dokumentu = "umowa_przedwstepna"`. Typ decyduje o schemacie; nazwa pliku
    nie ma znaczenia.
@@ -345,17 +346,17 @@ Pole puste w wyniku (`None` albo `""`) nie jest wyświetlane — `pole_pdf` je p
 
 Przykład: sprawdzenie NIP-u dewelopera.
 
-1. Funkcja w `core/walidacje.py`, np. `waliduj_nip(nip)`, zwracająca prosty wynik.
-2. Ustalenie w `core/ustalenia.py`, funkcja `zbierz_problemy`, sekcja „twarde walidacje” —
+1. Funkcja w `app.py`, sekcja WALIDACJE, np. `waliduj_nip(nip)`, zwracająca prosty wynik.
+2. Ustalenie w sekcji USTALENIA, funkcja `zbierz_problemy`, sekcja „twarde walidacje” —
    wzoruj się na PESEL-u. Klucz `"pole"` musi być kluczem ze schematu, wtedy znacznik
    ⚠ pojawi się też przy polu.
-3. Test w `tests/test_walidacje.py` i `tests/test_ustalenia.py`.
+3. Test w `tests/test_walidacje.py` i `tests/test_ustalenia.py` (importy: `from app import ...`).
 
 Twarde walidacje są pewniejsze niż ocena modelu, więc ustalenia z nich trafiają na górę panelu.
 
 ### 3.5. Waga ustaleń i przypisanie ich do pól
 
-Wszystko w `core/ustalenia.py`:
+Wszystko w `app.py`, sekcja USTALENIA:
 
 - `POZIOM_ROZBIEZNOSCI` — waga niezgodnych wartości w dokumencie, per pole.
 - `SLOWA_KLUCZOWE_POL` — po jakich słowach wpis weryfikacji UniFlow z modelu jest
@@ -368,13 +369,13 @@ Wszystko w `core/ustalenia.py`:
 
 | Co zmienić | Gdzie |
 |---|---|
-| kolory trafień (żółty / zielony / czerwony) i ich opisy w legendzie | `ui/dokument.py`, `RODZAJE_TRAFIEN` |
-| ile tekstu pokazuje karta fragmentu | `ui/dokument.py`, `_fragment` (liczba `150`) |
-| wysokość podglądu strony | `ui/dokument.py`, `WYSOKOSC_PODGLADU` |
-| jak czyszczony jest tekst OCR (tabele, komentarze, nagłówki) | `core/tekst.py`, `tekst_do_wyswietlenia` |
-| od ilu liter słowo jest skracane przy odmianie | `core/szukanie.py`, `wzorzec_z_odmiana` |
-| rozpoznawanie dat i nazw miesięcy | `core/daty.py` |
-| co uznajemy za kwotę | `core/kwoty.py`, `WZORZEC_ZAPISU_KWOTY` |
+| kolory trafień (żółty / zielony / czerwony) i ich opisy w legendzie | sekcja PANEL DOKUMENTU, `RODZAJE_TRAFIEN` |
+| ile tekstu pokazuje karta fragmentu | sekcja PANEL DOKUMENTU, `_fragment` (liczba `150`) |
+| wysokość podglądu strony | sekcja PANEL DOKUMENTU, `WYSOKOSC_PODGLADU` |
+| jak czyszczony jest tekst OCR (tabele, komentarze, nagłówki) | sekcja TEKST OCR, `tekst_do_wyswietlenia` |
+| od ilu liter słowo jest skracane przy odmianie | sekcja SZUKANIE, `wzorzec_z_odmiana` |
+| rozpoznawanie dat i nazw miesięcy | sekcja DATY |
+| co uznajemy za kwotę | sekcja KWOTY, `WZORZEC_ZAPISU_KWOTY` |
 
 Klik w pole wkleja wartość funkcją `ustaw_fraze_szukania` (callback przycisku). Nie da się
 tego zrobić zwykłym przypisaniem po wyrenderowaniu pola tekstowego — Streamlit zgłosi błąd.
@@ -384,7 +385,7 @@ tego zrobić zwykłym przypisaniem po wyrenderowaniu pola tekstowego — Streaml
 - **Kolory i style** — `app.py`, stała `CUSTOM_CSS`. Kolory są zmiennymi CSS na górze
   (`--akcent`, `--tlo-karty`, …) z osobnym wariantem dla motywu ciemnego — zmieniaj oba.
 - **Wysokość prawej kolumny** — `app.py`, `sekcja_akcja_i_kluczowe_dane`,
-  `st.container(height=900)`. Przy zmianie dopasuj `WYSOKOSC_PODGLADU` w `ui/dokument.py`,
+  `st.container(height=900)`. Przy zmianie dopasuj `WYSOKOSC_PODGLADU` (sekcja PANEL DOKUMENTU),
   żeby kolumny kończyły się w podobnej linii.
 - **Nagłówek** — `banner_naglowek` w `app.py`.
 - Aplikacja podąża za motywem przeglądarki. Nie ustawiaj `base="light"` w
@@ -392,7 +393,7 @@ tego zrobić zwykłym przypisaniem po wyrenderowaniu pola tekstowego — Streaml
 
 ### 3.8. Hurtownia
 
-`services/hurtownia.py`:
+`data_loader.py`:
 
 - nazwy tabel i zapytania,
 - `load_wnioskodawcy` — kolumny `IMIE`, `NAZWISKO`, `PESEL`, `STAN_CYWILNY` trafiają do
@@ -404,17 +405,17 @@ tego zrobić zwykłym przypisaniem po wyrenderowaniu pola tekstowego — Streaml
 
 Każda wartość wstawiana do SQL przechodzi walidację (`_numer_wniosku`, `_hash`). Nowy
 parametr zapytania też musi przez nią przejść — nigdy nie wstawiaj do f-stringa tekstu
-wpisanego przez użytkownika. Dozwolony format numeru wniosku:
-`core/walidacje.py`, `WZORZEC_NUMERU_WNIOSKU`.
+wpisanego przez użytkownika. Dozwolony format numeru wniosku: `WZORZEC_NUMERU_WNIOSKU` w `app.py` (sekcja WALIDACJE)
+i `_NUMER_WNIOSKU` w `data_loader.py` — **zmieniaj oba naraz**.
 
 `load_kwoty_kredytu` jest gotowe, ale obecnie nieużywane.
 
 ### 3.9. API
 
-`services/sde_api.py` — adresy endpointów i parametry (`document_type`, `ocr_model`).
-Limity czasu i adres bazowy są w `ustawienia.py` (albo zmiennych środowiskowych).
+`app.py`, sekcja API — adresy endpointów i parametry (`document_type`, `ocr_model`).
+Limity czasu i adres bazowy są w sekcji USTAWIENIA (albo w zmiennych środowiskowych).
 Endpoint OCR zwraca tekst ze znacznikami `&lt;!-- PageBreak --&gt;`; na nich
-`core/tekst.dodaj_markery_stron` opiera podział na strony. Jeśli format się zmieni,
+`dodaj_markery_stron` (sekcja TEKST OCR) opiera podział na strony. Jeśli format się zmieni,
 popraw wyrażenie w tej funkcji — od niego zależą numery stron w całej aplikacji.
 
 ### 3.10. Dane trybu offline
@@ -434,9 +435,11 @@ w panelu ustaleń.
 
 ## 4. Zasady, których trzeba pilnować
 
-- **`core/` nie importuje Streamlita.** Dane (np. `ocr_text`) przychodzą parametrem, nie
-  z `st.session_state`. Dzięki temu całą logikę da się przetestować.
-- **Stan sesji tylko przez `stan.py`.** Wynik analizy jest przypisany do pary (hash PDF,
+- **Logika bez Streamlita.** Funkcje z sekcji od USTAWIEŃ do SCHEMATÓW nie wołają `st.*` —
+  dane (np. `ocr_text`) przychodzą parametrem, nie z `st.session_state`. Dzięki temu da się
+  je przetestować. `st.set_page_config` i CSS są w `konfiguruj_strone()` wywoływanej
+  w `main()`, żeby import `app.py` w testach nie uruchamiał Streamlita.
+- **Stan sesji tylko przez funkcje z sekcji STAN SESJI.** Wynik analizy jest przypisany do pary (hash PDF,
   numer wniosku); klucz tylko po nazwie pliku pokazywałby wyniki innego dokumentu albo wniosku.
 - **Tekst z modelu, OCR i UniFlow jest niezaufany.** Przed wstawieniem do HTML
   (`st.markdown(..., unsafe_allow_html=True)`) przepuść go przez `html.escape`.
@@ -463,9 +466,9 @@ w panelu ustaleń.
 | żółte ostrzeżenie „Wynik nie został zapisany do cache” | błąd zapisu do Impali (Kerberos, metadane) | analiza jest kompletna; przy następnym otwarciu zostanie wykonana ponownie |
 | przycisk „Uruchom analizę” nieaktywny | brak tokenu albo wniosku | wpisz poprawny numer wniosku, sprawdź token |
 | pole szukania nieaktywne | skan przed analizą — nie ma jeszcze tekstu | uruchom analizę |
-| wszystkie trafienia na „stronie 1” | endpoint OCR zmienił format znacznika `PageBreak` | popraw wzorzec w `core/tekst.dodaj_markery_stron` |
+| wszystkie trafienia na „stronie 1” | endpoint OCR zmienił format znacznika `PageBreak` | popraw wzorzec w `dodaj_markery_stron` (sekcja TEKST OCR) |
 | fraza nie jest zaznaczona na stronie | skan bez warstwy tekstowej (norma) albo brak `pdfplumber` | na skanach to oczekiwane — pozycję wskazuje fragment tekstu nad podglądem |
 | brak przycisku „Kopiuj” jednym kliknięciem | brak pakietu `st-copy` | `pip install st-copy`; bez niego działa zapasowy wariant z ikoną kopiowania |
 | brak logo | brak `logo_mbank.jpg` obok `app.py` | skopiuj plik |
-| `ModuleNotFoundError: No module named 'core'` (albo `services`, `ui`) po przeniesieniu | brak `__init__.py` w katalogu albo zostało `.txt` w nazwie | sprawdź, czy `core/__init__.py` itd. istnieją i mają właściwe nazwy |
+| `ModuleNotFoundError: No module named 'config'` (albo `helpers`) | aplikacja uruchomiona poza serwerem bez trybu offline | lokalnie uruchamiaj z `HIPOTEKA_OFFLINE=1` |
 | aplikacja nie widzi pliku, choć jest w katalogu | nazwa wciąż kończy się na `.txt` (Windows ukrywa rozszerzenia) | włącz widok rozszerzeń i usuń końcówkę `.txt` |
