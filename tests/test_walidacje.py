@@ -1,6 +1,6 @@
 import pytest
 
-from core.walidacje import czy_wartosc_transakcji_zgodna, waliduj_nrb, waliduj_pesel
+from app import czy_wartosc_transakcji_zgodna, waliduj_nrb, waliduj_pesel
 
 
 @pytest.mark.parametrize("pesel", ["44051401359", "02070803628", "440 514 013 59"])

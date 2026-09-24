@@ -1,4 +1,4 @@
-from core.rozbieznosci import wariant_stoi_w_tekscie, zweryfikuj_warianty
+from app import wariant_stoi_w_tekscie, zweryfikuj_warianty
 
 OCR = "Umowa nr 123/2026. W innym miejscu I23/2026. Nabywca Jan Kowalski, Kowalskiemu."
 

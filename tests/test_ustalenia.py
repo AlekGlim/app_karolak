@@ -1,4 +1,4 @@
-from core.ustalenia import dopasuj_pole, problemy_wg_pola, stan_sekcji, zbierz_problemy
+from app import dopasuj_pole, problemy_wg_pola, stan_sekcji, zbierz_problemy
 
 
 def test_bledny_pesel_daje_ustalenie_wysokie():

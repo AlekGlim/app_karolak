@@ -1,4 +1,4 @@
-from core.tekst import (
+from app import (
     dodaj_markery_stron,
     normalizuj_do_porownania,
     normalizuj_do_szukania,
@@ -24,7 +24,7 @@ def test_normalizacja_do_szukania_zachowuje_dlugosc_tekstu():
 
 
 def test_trafienie_po_wielokropku_wskazuje_wlasciwy_fragment():
-    from core.szukanie import szukaj_w_ocr
+    from app import szukaj_w_ocr
 
     ocr = "[STRONA_1]\n" + "Uwaga… " * 50 + "[STRONA_2]\nJan Kowalski"
     trafienie = szukaj_w_ocr(ocr, "Jan Kowalski")[0]
@@ -46,7 +46,7 @@ def test_strona_dla_pozycji():
 
 
 def test_tekst_do_wyswietlenia_tabela_i_encje_na_brzegach():
-    from core.tekst import tekst_do_wyswietlenia
+    from app import tekst_do_wyswietlenia
 
     fragment = (
         "t;21-03-2026&lt;/td&gt;&lt;/tr&gt;\n&lt;tr&gt;&lt;td&gt;2&lt;/td&gt;"
@@ -56,7 +56,7 @@ def test_tekst_do_wyswietlenia_tabela_i_encje_na_brzegach():
 
 
 def test_tekst_do_wyswietlenia_komentarze_naglowki_i_przeciete_znaczniki():
-    from core.tekst import tekst_do_wyswietlenia
+    from app import tekst_do_wyswietlenia
 
     fragment = (
         'Header="Kancelaria" --&gt;\n\n# UMOWA DEWELOPERSKA\n\n'
@@ -66,7 +66,7 @@ def test_tekst_do_wyswietlenia_komentarze_naglowki_i_przeciete_znaczniki():
 
 
 def test_tekst_do_wyswietlenia_encje_zwyklego_tekstu():
-    from core.tekst import tekst_do_wyswietlenia
+    from app import tekst_do_wyswietlenia
 
     # endpoint zamienia < > & na encje także w zwykłym tekście
     assert tekst_do_wyswietlenia("cena 5 &lt; 6 oraz A &amp; B") == "cena 5 < 6 oraz A & B"

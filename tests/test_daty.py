@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from core.daty import parsuj_date, szukaj_daty_w_ocr, znajdz_daty
+from app import parsuj_date, szukaj_daty_w_ocr, znajdz_daty
 
 
 @pytest.mark.parametrize("tekst", [

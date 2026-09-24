@@ -1,6 +1,6 @@
 import pytest
 
-from core.indeks import (
+from app import (
     pierwsze_do_pokazania,
     scal_w_linie,
     strona_ze_slow,
@@ -8,8 +8,8 @@ from core.indeks import (
     zloz_strony,
     znajdz_w_stronach,
 )
-from core.kwoty import kwota_z_frazy
-from core.szukanie import szukaj_w_ocr_z_wariantami
+from app import kwota_z_frazy
+from app import szukaj_w_ocr_z_wariantami
 
 
 def _slowo(tekst, x0, top, szerokosc=None):

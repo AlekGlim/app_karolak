@@ -1,20 +1,28 @@
 """
-Hipoteka AI - Proof of Concept (Sprint 1)
+Hipoteka AI — analiza umowy deweloperskiej (Proof of Concept)
 Aplikacja Streamlit dla analityków hipotecznych.
 
-Działa niezależnie od notatnika `analiza_prawna_umowa_dew.ipynb` (ten służy do
-ad hoc testowania promptów i endpointów). Obydwa wywołują te same endpointy,
-ale każde ma własną, osobną implementację.
+Pliki projektu:
+  app.py          ten plik — cała aplikacja
+  data_loader.py  hurtownia: dane wniosku z UniFlow, cache wyników (tylko serwer)
+  schemy/*.json   schematy ekstrakcji = pytanie do modelu
+  dev/            dane trybu offline (opcjonalne, do pracy lokalnej)
 
-Przepływ:
-1. Upload PDF + podgląd dokumentu (lewa kolumna).
-2. OCR dokumentu.
-3. Jedno wywołanie endpointu Extract ze schematem zwracającym kluczowe pola,
-   podsumowanie i listę ryzyk (prawa kolumna + sekcje na dole).
+Przepływ: numer wniosku -> dane klientów z UniFlow; upload PDF -> OCR ->
+ekstrakcja (schemat + dane UniFlow w prompcie) -> panel ustaleń, dane z dokumentu,
+szukajka, podsumowanie i ryzyka. Wynik trafia do cache w hurtowni.
 
-Token, BASE_URL i CA_CERT — patrz ustawienia.py. Hurtownia i API są w services/;
-lokalnie, bez dostępu do hurtowni, aplikację uruchamia się w trybie offline
-(HIPOTEKA_OFFLINE=1), który podmienia wyłącznie źródła danych — patrz README.
+Sekcje pliku (w tej kolejności):
+  USTAWIENIA · TEKST OCR · KWOTY · DATY · WALIDACJE · SZUKANIE · INDEKS DOKUMENTU
+  · ROZBIEŻNOŚCI · USTALENIA · SCHEMATY, PROMPT I KLUCZ CACHE · API · PDF
+  · TRYB OFFLINE · ŹRÓDŁA DANYCH · ANALIZA · STAN SESJI · WIDOK: PANEL DOKUMENTU
+  · widoki aplikacji (CSS, panel boczny, dane wniosku, pola, ustalenia, zakładki, main)
+
+Sekcje od USTAWIEŃ do ROZBIEŻNOŚCI/USTALEŃ nie używają Streamlita — to czysta
+logika, pokryta testami w tests/.
+
+Lokalnie, bez hurtowni: HIPOTEKA_OFFLINE=1 streamlit run app.py — podmienia
+wyłącznie źródła danych na pliki z dev/. Szczegóły: docs/INSTRUKCJA.md.
 
 Numery stron nie pochodzą od modelu: wartość pola jest szukana w tekście OCR,
 a strona wynika z najbliższego markera [STRONA_X]. Rozbieżności w dokumencie
@@ -26,25 +34,36 @@ NIE ustawiaj base="light" w .streamlit/config.toml - jeśli taki plik istnieje,
 usuń go albo usuń z niego sekcję [theme].
 """
 
-import html
 import base64
-import streamlit as st
+import hashlib
+import html
+import io
+import json
+import os
+import re
+import time
+import unicodedata
+import uuid
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from functools import lru_cache
+from pathlib import Path
+from types import SimpleNamespace
+
 import pandas as pd
+import pypdfium2 as pdfium
+import requests
+import streamlit as st
+from PIL import Image, ImageDraw
 
-import stan
-from services import zrodla
-from services.analiza import analizuj
-from ui.dokument import panel_dokumentu, ustaw_fraze_szukania
-from ustawienia import OFFLINE, PLIK_LOGO, PLIK_TOKENU
-from core.rozbieznosci import zweryfikuj_warianty
-from core.ustalenia import problemy_wg_pola, stan_sekcji, zbierz_problemy
-from core.walidacje import (
-    czy_poprawny_numer_wniosku,
-    czy_wartosc_transakcji_zgodna,
-    waliduj_nrb,
-    waliduj_pesel,
-)
-
+# Pozycje słów w PDF-ie z warstwą tekstową — do zaznaczania frazy na stronie.
+# Bez pakietu (i dla skanów) szukajka wskazuje stronę i fragment tekstu OCR.
+try:
+    import pdfplumber
+    MA_WARSTWE_TEKSTOWA = True
+except ImportError:
+    pdfplumber = None
+    MA_WARSTWE_TEKSTOWA = False
 
 # Przycisk kopiowania wartości do UniFlow. Gdy pakietu nie ma w środowisku,
 # aplikacja działa dalej — tylko bez przycisków (wymaga: pip install st-copy).
@@ -56,22 +75,2064 @@ except ImportError:
     MA_KOPIOWANIE = False
 
 
+# =====================================================================
+# USTAWIENIA
+# =====================================================================
+# Stałe aplikacji. Wartości zależne od środowiska można nadpisać zmienną
+# środowiskową (HIPOTEKA_TOKEN, HIPOTEKA_CA_CERT, HIPOTEKA_BASE_URL,
+# HIPOTEKA_LIMIT_OCR_S, HIPOTEKA_LIMIT_EKSTRAKCJI_S, HIPOTEKA_OFFLINE).
+
+KATALOG_APLIKACJI = Path(__file__).resolve().parent
+
+BASE_URL = os.environ.get("HIPOTEKA_BASE_URL", "https://hdspprd1.ux.mbank.pl/sde_service/api")
+CA_CERT = os.environ.get("HIPOTEKA_CA_CERT", "/home/jovyan/security/ca.pem")
+PLIK_TOKENU = Path(os.environ.get(
+    "HIPOTEKA_TOKEN",
+    "/home/jovyan/projects/analiza_prawna_hipoteka/token.txt",
+))
+
+SCHEMY_DIR = KATALOG_APLIKACJI / "schemy"
+PLIK_LOGO = KATALOG_APLIKACJI / "logo_mbank.jpg"
+KATALOG_DEV = KATALOG_APLIKACJI / "dev"
+
+# Limity czasu zadań po stronie API (sekundy). Ekstrakcja długiego aktu
+# notarialnego z sekcją rozbieżności potrafi trwać dłużej niż OCR.
+LIMIT_OCR_S = int(os.environ.get("HIPOTEKA_LIMIT_OCR_S", "180"))
+LIMIT_EKSTRAKCJI_S = int(os.environ.get("HIPOTEKA_LIMIT_EKSTRAKCJI_S", "300"))
+ODSTEP_ODPYTYWANIA_S = 3
+
+# Tryb offline: hurtownia i API zastąpione danymi z katalogu dev/.
+# Wyłącznie do pracy nad wyglądem na komputerze bez dostępu do hurtowni.
+OFFLINE = os.environ.get("HIPOTEKA_OFFLINE") == "1"
+
+
+# =====================================================================
+# TEKST OCR — normalizacja, markery stron, fragmenty do wyświetlenia
+# =====================================================================
+# Tekst OCR: normalizacja do porównań i znaczniki stron [STRONA_X].
+
+def dodaj_markery_stron(ocr_text):
+
+    strony = re.split(
+        r'&lt;!--\s*PageBreak\s*--&gt;',
+        ocr_text
+    )
+
+    wynik = []
+
+    for nr, tresc in enumerate(
+        strony,
+        start=1
+    ):
+        wynik.append(
+            f"\n\n[STRONA_{nr}]\n{tresc}"
+        )
+
+    return "".join(wynik)
+
+
+DLUGOSC_KONTEKSTU = 200
+
+
+@lru_cache(maxsize=None)
+def _znak_do_szukania(znak):
+    """Jeden znak bez diakrytyku i wielkości liter — zawsze jeden znak.
+
+    NFKD rozwija też znaki złożone ("…" -> "...", "ﬁ" -> "fi", "№" -> "No"),
+    a "İ".lower() daje dwa znaki. Taki znak zostaje bez zmian: wynik ma mieć
+    tę samą długość co wejście.
+    """
+    bez_diakrytyku = "".join(
+        z for z in unicodedata.normalize("NFKD", znak)
+        if not unicodedata.combining(z)
+    ).lower()
+
+    if len(bez_diakrytyku) == 1:
+        return bez_diakrytyku
+
+    maly = znak.lower()
+    return maly if len(maly) == 1 else znak
+
+
+def normalizuj_do_szukania(tekst):
+    """Bez diakrytyków i wielkości liter — analityk wpisuje frazę z pamięci.
+
+    Wynik ma zawsze tę samą długość co wejście: pozycje trafień w tekście
+    znormalizowanym służą do wycinania fragmentów i szukania markera strony
+    w tekście oryginalnym. Przy normalizacji całego tekstu naraz jeden "…"
+    przesuwał wszystkie dalsze trafienia o dwa znaki.
+    """
+    return "".join(map(_znak_do_szukania, str(tekst)))
+
+
+def strona_dla_pozycji(ocr_text, pozycja):
+    """Numer strony dla znalezionej pozycji — po ostatnim markerze [STRONA_X].
+
+    Zwraca None, gdy tekst nie ma markerów (np. wynik z cache zapisany
+    przed ich dodaniem).
+    """
+    fragment = ocr_text[:pozycja]
+    markery = re.findall(r"\[STRONA_(\d+)\]", fragment)
+    return int(markery[-1]) if markery else None
+
+
+def normalizuj_do_porownania(tekst):
+    """Wielkość liter i układ białych znaków nie mają znaczenia — reszta tak.
+
+    Celowo NIE zdejmujemy diakrytyków ani nie skracamy końcówek (jak robi to
+    normalizuj_do_szukania). Tu pytamy "czy ten zapis naprawdę tam stoi",
+    więc im ostrzejsze porównanie, tym mniej fałszywych potwierdzeń.
+    """
+    return re.sub(r"\s+", " ", str(tekst)).strip().lower()
+
+
+def tekst_do_wyswietlenia(fragment):
+    """Fragment tekstu OCR w postaci do pokazania analitykowi.
+
+    Endpoint OCR (prebuilt-layout) zwraca markdown z encjami zamiast < i >:
+    tabele jako &lt;table&gt;&lt;tr&gt;&lt;td&gt;…, komentarze stron
+    (&lt;!-- PageHeader=… --&gt;), nagłówki "# ", znaczniki pól wyboru.
+    Tu zostaje sam tekst: komórki tabeli rozdzielone " · ", wiersze " | ", reszta znaczników
+    usunięta. Fragment jest wycinkiem, więc obcięte znaczniki na jego
+    brzegach też są usuwane.
+
+    Wynik to zwykły tekst — przed wstawieniem do HTML trzeba go escapować.
+    """
+    tekst = str(fragment)
+
+    # encja przecięta brzegiem wycinka ("&l" na końcu, "t;" na początku)
+    tekst = re.sub(r"&[a-zA-Z#0-9]{0,7}$", "", tekst)
+    tekst = re.sub(r"^(?:l?t|g?t|a?m?p|q?u?o?t);", "", tekst)
+
+    tekst = html.unescape(tekst)
+
+    # komentarze, także obcięte na brzegach wycinka
+    tekst = re.sub(r"<!--.*?-->", " ", tekst, flags=re.DOTALL)
+    tekst = re.sub(r"^[^<]*?-->", " ", tekst, flags=re.DOTALL)
+    tekst = re.sub(r"<!--.*$", " ", tekst, flags=re.DOTALL)
+
+    # tabele: granica komórek -> separator, pozostałe znaczniki -> odstęp
+    tekst = re.sub(r"</t[dh]>\s*<t[dh][^>]*>", " · ", tekst)
+    tekst = re.sub(r"</t[dh]>\s*</tr>\s*<tr[^>]*>\s*<t[dh][^>]*>", " | ", tekst)
+    tekst = re.sub(r"</tr>\s*<tr[^>]*>", " | ", tekst)
+    tekst = re.sub(r"</?[a-zA-Z][^>]*>", " ", tekst)
+    tekst = re.sub(r"^\s*/?[a-zA-Z]{1,10}>", " ", tekst)   # "td>" na początku wycinka
+    tekst = re.sub(r"</?[a-zA-Z]{0,10}$", " ", tekst)       # "</t" na końcu wycinka
+
+    tekst = re.sub(r"(?m)^\s*#{1,6}\s+", "", tekst)
+    tekst = re.sub(r":(?:un)?selected:", " ", tekst)
+
+    return re.sub(r"\s+", " ", tekst)
+
+
+# =====================================================================
+# KWOTY
+# =====================================================================
+# Kwoty w złotych: odczyt z tekstu i wzorce do szukania w OCR.
+
+def wyciagnij_kwote(tekst):
+    """Kwota w groszach z tekstu pola albo 0.
+
+    Kolejno próbujemy:
+      1. kwoty z groszami gdziekolwiek w tekście ("transza 1: 150 000,00 zł")
+      2. całego pola jako kwoty ("450 000", "450 000 zł")
+      3. kwoty bez groszy zakończonej walutą ("50 000 zł (zadatek)")
+
+    Bez kroków 2-3 kwota zapisana bez ",00" dawała 0 i suma transz
+    fałszywie nie zgadzała się z wartością transakcji.
+    """
+    if not tekst:
+        return 0
+
+    tekst = str(tekst)
+
+    match = re.search(r'(\d[\d .]*,\d{2})', tekst)
+    if match:
+        return int(re.sub(r"[ .,]", "", match.group(1)))
+
+    cale_pole = kwota_na_grosze(tekst)
+    if cale_pole is not None:
+        return cale_pole
+
+    match = re.search(r"(\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:zł|zl|pln)", tekst, re.IGNORECASE)
+    if match:
+        return kwota_na_grosze(match.group(1)) or 0
+
+    return 0
+
+
+def kwota_na_grosze(tekst):
+    """Kwota jako liczba groszy albo None.
+
+    Rozumie "450 000,00 zł", "450.000,00", "450000", "450 000". Ostatni
+    separator z 1-2 cyframi po nim to część ułamkowa; z trzema cyframi —
+    separator tysięcy ("45.000" to 45 tysięcy, nie 45 zł).
+    """
+    if tekst is None:
+        return None
+
+    czysty = re.sub(r"(?i)z[łl]\b|pln|\s", "", str(tekst))
+    dop = re.fullmatch(r"(\d+(?:[.,]\d{3})*)(?:[.,](\d{1,2}))?", czysty)
+    if not dop:
+        return None
+
+    zlote = int(re.sub(r"[.,]", "", dop.group(1)))
+    grosze = int(dop.group(2).ljust(2, "0")) if dop.group(2) else 0
+
+    return zlote * 100 + grosze
+
+
+def wzorzec_kwoty(grosze):
+    """Wyrażenie regularne dopasowujące daną kwotę w każdym zapisie.
+
+    Separator tysięcy może być spacją, kropką albo go nie być; część
+    ułamkowa jest opcjonalna, gdy grosze są zerowe. Lookbehind i lookahead
+    pilnują, żeby 500 nie dopasowało się do środka "45 500,00" ani "500 000",
+    a kwota bez groszy nie złapała "450 000,50".
+    """
+    zlote, gr = divmod(grosze, 100)
+
+    cyfry = str(zlote)
+    grupy = []
+    while len(cyfry) > 3:
+        grupy.insert(0, cyfry[-3:])
+        cyfry = cyfry[:-3]
+    grupy.insert(0, cyfry)
+
+    calkowita = r"[ .]?".join(grupy)
+    ulamek = r"(?:,00)?" if gr == 0 else f",{gr:02d}"
+
+    return r"(?<![\d,.])(?<!\d[ .])" + calkowita + ulamek + r"(?!\d|,\d|[ .]\d{3})"
+
+
+# Zapis, który na pewno jest kwotą: z separatorem tysięcy albo z groszami.
+# Same cyfry ("2026", PESEL, numer działki) kwotą nie są.
+WZORZEC_ZAPISU_KWOTY = re.compile(r"\d{1,3}(?:[ .]\d{3})+(?:,\d{1,2})?|\d+,\d{1,2}")
+
+
+def kwota_z_frazy(tekst):
+    """Grosze, gdy fraza wygląda na kwotę; w przeciwnym razie None."""
+    if tekst is None:
+        return None
+
+    czysty = re.sub(r"(?i)\s*(?:z[łl]|pln)\.?\s*$", "", str(tekst).strip())
+    if not WZORZEC_ZAPISU_KWOTY.fullmatch(czysty):
+        return None
+
+    return kwota_na_grosze(czysty)
+
+
+# =====================================================================
+# DATY
+# =====================================================================
+# Daty w tekście OCR — w zapisie liczbowym i słownym ("22 marca 2000").
+
+# Polskie nazwy miesięcy w dopełniaczu, już bez diakrytyków — szukamy w tekście
+# przepuszczonym przez normalizuj_do_szukania ("września" -> "wrzesnia").
+NUMERY_MIESIECY = {
+    "stycznia": 1, "lutego": 2, "marca": 3, "kwietnia": 4,
+    "maja": 5, "czerwca": 6, "lipca": 7, "sierpnia": 8,
+    "wrzesnia": 9, "pazdziernika": 10, "listopada": 11, "grudnia": 12,
+}
+
+
+# Dwa zapisy daty w jednym wyrażeniu:
+#   22-03-2000 / 22.03.2000 / 22/03/2000 / 22 . 03 . 2000  (grupy 1, 2, 4)
+#   22 marca 2000                                          (grupy 1, 3, 4)
+# Lookbehind blokuje trafienia w środku dłuższego ciągu liczb (np. numeru
+# rachunku), lookahead — w środku roku (20003).
+WZORZEC_DATY = re.compile(
+    r"(?<![\d.,/-])(\d{1,2})"
+    r"(?:[ ]?[-./][ ]?(\d{1,2})[ ]?[-./][ ]?|[ ]+(" + "|".join(NUMERY_MIESIECY) + r")[ ]+)"
+    r"(\d{4})(?!\d)"
+)
+
+
+def znajdz_daty(ocr_text):
+    """Wszystkie daty w tekście: [{"data": date, "pozycja": ..., "koniec": ...}].
+
+    Pozycje odnoszą się do oryginalnego tekstu (normalizacja zdejmuje
+    diakrytyki, ale nie zmienia długości). Wyrażenia, które wyglądają jak data,
+    a nią nie są (31-02-2000), są pomijane.
+    """
+    if not ocr_text:
+        return []
+
+    znorm = normalizuj_do_szukania(ocr_text)
+    daty = []
+
+    for dop in WZORZEC_DATY.finditer(znorm):
+        dzien = int(dop.group(1))
+        miesiac = int(dop.group(2)) if dop.group(2) else NUMERY_MIESIECY[dop.group(3)]
+        rok = int(dop.group(4))
+
+        try:
+            data = date(rok, miesiac, dzien)
+        except ValueError:
+            continue
+
+        daty.append({"data": data, "pozycja": dop.start(), "koniec": dop.end()})
+
+    return daty
+
+
+def parsuj_date(tekst):
+    """Data z tekstu albo None.
+
+    Zwraca datę tylko wtedy, gdy tekst zawiera dokładnie jedną. "22-03-2000 r."
+    to jedna data; "od 22-03-2000 do 30-04-2000" to dwie, więc nie zgadujemy.
+    """
+    if not tekst:
+        return None
+
+    daty = znajdz_daty(str(tekst))
+    if len(daty) != 1:
+        return None
+
+    return daty[0]["data"]
+
+
+def szukaj_daty_w_ocr(ocr_text, data):
+    """Trafienia danej daty w tekście OCR — w każdym zapisie.
+
+    Zwraca ten sam kształt co szukaj_w_ocr, więc wynik można mieszać
+    z trafieniami zwykłego szukania.
+    """
+    trafienia = []
+
+    for wpis in znajdz_daty(ocr_text):
+        if wpis["data"] != data:
+            continue
+
+        start, koniec = wpis["pozycja"], wpis["koniec"]
+        od = max(0, start - DLUGOSC_KONTEKSTU)
+        do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
+
+        trafienia.append({
+            "pozycja": start,
+            "strona": strona_dla_pozycji(ocr_text, start),
+            "przed": ocr_text[od:start],
+            "trafienie": ocr_text[start:koniec],
+            "po": ocr_text[koniec:do],
+            "dokladne": True,
+        })
+
+    return trafienia
+
+
+# =====================================================================
+# WALIDACJE — PESEL, NRB, suma transz, numer wniosku
+# =====================================================================
+# Twarde walidacje liczone w Pythonie: PESEL, NRB, suma harmonogramu.
+
+def waliduj_nrb(numer):
+
+    if not numer:
+        return "Brak numeru"
+
+    nrb = "".join(filter(str.isdigit, str(numer)))
+
+    if len(nrb) != 26:
+        return "❌ Niepoprawna długość"
+
+    try:
+        liczba = nrb[2:] + "2521" + nrb[:2]
+
+        if int(liczba) % 97 == 1:
+            return "Poprawny strukturalnie"
+
+        return "Niepoprawna suma kontrolna"
+
+    except Exception:
+        return "Błąd walidacji"
+
+
+def waliduj_pesel(pesel):
+
+    if not pesel:
+        return "⚪"
+
+    pesel = "".join(filter(str.isdigit, str(pesel)))
+
+    if len(pesel) != 11:
+        return "❌"
+
+    try:
+
+        rok = int(pesel[0:2])
+        miesiac = int(pesel[2:4])
+        dzien = int(pesel[4:6])
+
+        if 1 <= miesiac <= 12:
+            rok += 1900
+
+        elif 21 <= miesiac <= 32:
+            rok += 2000
+            miesiac -= 20
+
+        elif 41 <= miesiac <= 52:
+            rok += 2100
+            miesiac -= 40
+
+        elif 61 <= miesiac <= 72:
+            rok += 2200
+            miesiac -= 60
+
+        elif 81 <= miesiac <= 92:
+            rok += 1800
+            miesiac -= 80
+
+        else:
+            return "❌"
+
+        datetime(rok, miesiac, dzien)
+
+        wagi = [1, 3, 7, 9, 1, 3, 7, 9, 1, 3]
+
+        suma = sum(
+            int(c) * w
+            for c, w in zip(pesel[:10], wagi)
+        )
+
+        kontrolna = (10 - (suma % 10)) % 10
+
+        if kontrolna != int(pesel[10]):
+            return "❌"
+
+        return "✅"
+
+    except Exception:
+        return "❌"
+
+
+def czy_wartosc_transakcji_zgodna(wynik):
+
+    cena = wyciagnij_kwote(
+        wynik.get("laczna_wartosc_transakcji")
+        or wynik.get("cena_nieruchomosci")
+    )
+
+    if cena == 0:
+        return "⚪"
+
+    suma = sum(
+        wyciagnij_kwote(t.get("kwota"))
+        for t in wynik.get("harmonogram_transz", [])
+    )
+
+    return "✅" if cena == suma else "❌"
+
+
+# Numer wniosku trafia do zapytań SQL, więc dopuszczamy wyłącznie znaki
+# spotykane w numerach (np. KHB1553044, WN/2026/00184521). Apostrof, spacja,
+# średnik itp. są odrzucane, zanim cokolwiek pójdzie do hurtowni.
+# Ta sama reguła stoi w data_loader.py (_NUMER_WNIOSKU) — zmieniając jedną, zmień obie.
+WZORZEC_NUMERU_WNIOSKU = re.compile(r"[A-Za-z0-9][A-Za-z0-9/_.\-]{0,63}")
+
+
+def czy_poprawny_numer_wniosku(numer):
+    return bool(numer) and WZORZEC_NUMERU_WNIOSKU.fullmatch(str(numer)) is not None
+
+
+# =====================================================================
+# SZUKANIE W TEKŚCIE OCR
+# =====================================================================
+# Szukanie wartości w tekście OCR i wyznaczanie numeru strony.
+#
+# Numery stron są deterministyczne: wartość jest szukana w tekście OCR,
+# a strona wynika z najbliższego markera [STRONA_X] przed trafieniem.
+
+def wzorzec_z_odmiana(fraza):
+    """Regex tolerujący polską odmianę: dłuższe słowa skracamy o końcówkę.
+
+    W akcie notarialnym stoi "w Warszawie", a w polu mamy "Warszawa".
+    Bez tego połowa pól tekstowych nie znalazłaby się w dokumencie.
+    """
+    slowa = normalizuj_do_szukania(fraza).split()
+    if not slowa:
+        return None
+
+    czesci = []
+    for slowo in slowa:
+        rdzen = re.escape(slowo[:-2]) if len(slowo) > 5 else re.escape(slowo)
+        czesci.append(rdzen + r"\w*")
+
+    return r"\b" + r"\s+".join(czesci)
+
+
+def szukaj_w_ocr(ocr_text, fraza):
+    """Trafienia frazy w tekście OCR, z numerem strony i fragmentem kontekstu."""
+    if not ocr_text or not fraza or not str(fraza).strip():
+        return []
+
+    znorm = normalizuj_do_szukania(ocr_text)
+    trafienia = []
+
+    def zbierz(wzor, dokladne):
+        for dop in re.finditer(wzor, znorm):
+            start, koniec = dop.span()
+            od = max(0, start - DLUGOSC_KONTEKSTU)
+            do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
+            trafienia.append({
+                "pozycja": start,
+                "strona": strona_dla_pozycji(ocr_text, start),
+                "przed": ocr_text[od:start],
+                "trafienie": ocr_text[start:koniec],
+                "po": ocr_text[koniec:do],
+                "dokladne": dokladne,
+            })
+
+    # Słowa frazy rozdziela dowolny odstęp: w tekście OCR fraza łamie się
+    # na końcu linii ("księgę\nwieczystą"), a pole z modelu ma zwykłą spację.
+    slowa = normalizuj_do_szukania(fraza).split()
+    if slowa:
+        zbierz(r"\s+".join(re.escape(slowo) for slowo in slowa), True)
+
+    # Odmiana dopiero jako zapas — inaczej "Nowak" łapałoby "Nowakowski".
+    if not trafienia:
+        wzor_odmiana = wzorzec_z_odmiana(fraza)
+        if wzor_odmiana:
+            zbierz(wzor_odmiana, False)
+
+    widziane, unikalne = set(), []
+    for t in sorted(trafienia, key=lambda t: t["pozycja"]):
+        if t["pozycja"] not in widziane:
+            widziane.add(t["pozycja"])
+            unikalne.append(t)
+
+    return unikalne
+
+
+def warianty_do_szukania(fraza, potwierdzone):
+    """Zapisy do wyszukania: [{"fraza": ..., "rodzaj": ...}].
+
+    Gdy wpisana fraza jest jednym z zapisów pola z rozbieżnością, szukamy
+    wszystkich jego zapisów — także niezgodnych, bo analityk chce zobaczyć,
+    gdzie w dokumencie one stoją. Rodzaj pozwala je potem rozróżnić kolorem;
+    bez tego "Nowak" wyglądałby na liście trafień tak samo jak "Kowalski".
+
+    Gdy fraza nie należy do żadnego pola z rozbieżnością, zwraca samą frazę —
+    szukajka działa wtedy jak dotychczas.
+    """
+    znorm_fraza = normalizuj_do_porownania(fraza)
+
+    for wpis in (potwierdzone or []):
+        zapisy = [{"fraza": wpis["wartosc_glowna"], "rodzaj": "glowna"}]
+
+        for wartosc in wpis["wartosci_ok"]:
+            zapisy.append({"fraza": wartosc, "rodzaj": "ok"})
+
+        for wartosc in wpis["wartosci_zle"]:
+            zapisy.append({"fraza": wartosc, "rodzaj": "zla"})
+
+        if znorm_fraza in [normalizuj_do_porownania(z["fraza"]) for z in zapisy]:
+            return zapisy
+
+    return [{"fraza": fraza, "rodzaj": "szukana"}]
+
+
+def szukaj_w_ocr_z_wariantami(ocr_text, zapisy):
+    """Trafienia dla kilku zapisów naraz, posortowane po pozycji w tekście.
+
+    `zapisy` w formacie z warianty_do_szukania. Każdy zapis szukamy osobno
+    przez szukaj_w_ocr, więc reguły (dosłownie, odmiana tylko jako zapas)
+    zostają te same. Rodzaj zapisu przechodzi na trafienie.
+
+    Gdy dwa zapisy trafią w to samo miejsce, wygrywa ten wcześniejszy na
+    liście — dlatego warianty_do_szukania zwraca najpierw wartość główną,
+    potem "ok", a na końcu niezgodne.
+    """
+    wszystkie = []
+
+    for zapis in zapisy:
+        # Kwotę szukamy wyłącznie wzorcem kwoty: łapie każdy zapis i pilnuje
+        # granic liczby. Szukanie dosłowne znalazłoby "685 000,00" także
+        # w środku "1 685 000,00".
+        grosze = kwota_z_frazy(zapis["fraza"])
+        if grosze is not None:
+            trafienia_zapisu = szukaj_kwoty_w_ocr(ocr_text, grosze)
+        else:
+            trafienia_zapisu = szukaj_w_ocr(ocr_text, zapis["fraza"])
+
+        # fraza będąca pełną datą znajduje ją w każdym zapisie
+        # ("22-03-2000" znajdzie też "22 marca 2000") — patrz 2B
+        data = parsuj_date(zapis["fraza"])
+        if data:
+            trafienia_zapisu += szukaj_daty_w_ocr(ocr_text, data)
+
+        for trafienie in trafienia_zapisu:
+            trafienie["fraza"] = zapis["fraza"]
+            trafienie["rodzaj"] = zapis["rodzaj"]
+            wszystkie.append(trafienie)
+
+    widziane, unikalne = set(), []
+    for t in sorted(wszystkie, key=lambda t: t["pozycja"]):
+        if t["pozycja"] not in widziane:
+            widziane.add(t["pozycja"])
+            unikalne.append(t)
+
+    return unikalne
+
+
+def szukaj_kwoty_w_ocr(ocr_text, grosze):
+    """Trafienia danej kwoty w tekście OCR — w każdym zapisie.
+
+    Ten sam kształt wyniku co szukaj_w_ocr.
+    """
+    if not ocr_text:
+        return []
+
+    znorm = normalizuj_do_szukania(ocr_text)
+    trafienia = []
+
+    for dop in re.finditer(wzorzec_kwoty(grosze), znorm):
+        start, koniec = dop.span()
+        od = max(0, start - DLUGOSC_KONTEKSTU)
+        do = min(len(ocr_text), koniec + DLUGOSC_KONTEKSTU)
+        trafienia.append({
+            "pozycja": start,
+            "strona": strona_dla_pozycji(ocr_text, start),
+            "przed": ocr_text[od:start],
+            "trafienie": ocr_text[start:koniec],
+            "po": ocr_text[koniec:do],
+            "dokladne": True,
+        })
+
+    return trafienia
+
+
+def strona_dla_wartosci(ocr_text, wartosc, potwierdzone=None, rodzaj=None):
+    """Strona pierwszego trafienia wartości w tekście OCR albo None.
+
+    W pełni deterministyczne: ta sama wartość i ten sam tekst dają zawsze
+    tę samą stronę. Trafienia bez markera strony pomijamy — to tekst sprzed
+    pierwszego markera albo wynik z cache zapisany bez markerów; zwrócenie
+    None jest wtedy uczciwsze niż zgadywanie.
+
+    `rodzaj` ("data" albo "kwota") włącza szukanie odporne na zapis: data
+    zwrócona jako 22-03-2000 zostanie znaleziona jako "22 marca 2000",
+    a kwota "450 000,00 zł" jako "450.000,00". Gdy to nie da trafienia
+    (albo wartości nie da się odczytać), szukamy zwykłym tekstem.
+
+    Pierwsze trafienie to świadomy wybór: wartości powtarzają się w całym
+    dokumencie (miasto, nazwa dewelopera), a analityk zwykle chce zobaczyć,
+    gdzie wartość pojawia się po raz pierwszy. Kolejne strony znajdzie
+    w szukajce.
+
+    `ocr_text` przychodzi parametrem, a nie z session_state — dzięki temu
+    funkcja działa na tekście właściwego dokumentu i da się ją przetestować.
+    """
+    if rodzaj == "data":
+        data = parsuj_date(wartosc)
+        if data:
+            for trafienie in szukaj_daty_w_ocr(ocr_text, data):
+                if trafienie["strona"]:
+                    return trafienie["strona"]
+
+    if rodzaj == "kwota":
+        strona = strona_dla_kwoty(ocr_text, wartosc)
+        if strona:
+            return strona
+
+    zapisy = warianty_do_szukania(str(wartosc), potwierdzone)
+    trafienia = szukaj_w_ocr_z_wariantami(ocr_text, zapisy)
+
+    # Najpierw wartość przyjęta i jej inne zapisy: klik w pole ma pokazać to,
+    # co w polu stoi. Na wartość niezgodną skaczemy dopiero, gdy nic innego
+    # nie znaleziono — inaczej analityk trafiłby na "Nowaka" bez ostrzeżenia.
+    for trafienie in trafienia:
+        if trafienie["strona"] and trafienie["rodzaj"] != "zla":
+            return trafienie["strona"]
+
+    for trafienie in trafienia:
+        if trafienie["strona"]:
+            return trafienie["strona"]
+
+    return None
+
+
+POLA_DAT = {
+    "data_umowy",
+    "termin_przeniesienia_wlasnosci",
+    "termin_odrebnej_wlasnosci",
+}
+
+
+POLA_KWOT = {
+    "cena_nieruchomosci",
+    "laczna_wartosc_transakcji",
+    "laczna_suma_harmonogramu",
+}
+
+
+def strona_dla_kwoty(ocr_text, kwota, ktora=0):
+    """Strona `ktora`-tego (od zera) trafienia kwoty w tekście OCR albo None.
+
+    Gdy trafień jest mniej niż `ktora`+1, bierzemy ostatnie.
+    """
+    grosze = kwota_na_grosze(kwota)
+    if grosze is None or not ocr_text:
+        return None
+
+    znorm = normalizuj_do_szukania(ocr_text)
+
+    strony = []
+    for dop in re.finditer(wzorzec_kwoty(grosze), znorm):
+        strona = strona_dla_pozycji(ocr_text, dop.start())
+        if strona:
+            strony.append(strona)
+
+    if not strony:
+        return None
+
+    return strony[min(ktora, len(strony) - 1)]
+
+
+def strona_dla_tokenu(ocr_text, token):
+    """Strona pierwszego trafienia krótkiego oznaczenia (A3, G26, numer KW).
+
+    Szukamy jako osobnego tokenu, bo zwykłe szukanie podciągu znalazłoby
+    "A3" w "A30" i w "KA3" — a tak krótkie oznaczenia to główna zawartość
+    elementów tablic.
+    """
+    if not token or not str(token).strip() or not ocr_text:
+        return None
+
+    wzor = r"(?<!\w)" + re.escape(normalizuj_do_szukania(token).strip()) + r"(?!\w)"
+
+    for dop in re.finditer(wzor, normalizuj_do_szukania(ocr_text)):
+        strona = strona_dla_pozycji(ocr_text, dop.start())
+        if strona:
+            return strona
+
+    return None
+
+
+# =====================================================================
+# INDEKS DOKUMENTU — strony i trafienia do szukajki
+# =====================================================================
+# Indeks dokumentu do szukajki: tekst każdej strony + pozycje słów na stronie.
+#
+# Strona pochodzi z jednego z dwóch źródeł:
+#   - tekst OCR podzielony po markerach [STRONA_X] — typowy przypadek (skany);
+#     endpoint zwraca markdown bez pozycji słów, więc wiadomo, na której
+#     stronie jest trafienie, ale nie gdzie na niej,
+#   - warstwa tekstowa PDF (słowa z prostokątami) — rzadziej, dla PDF-ów
+#     wygenerowanych cyfrowo; trafienie da się wtedy zaznaczyć na obrazie strony.
+#
+# Kształt strony:
+#   {"numer": int, "tekst": str, "mapa": [indeks słowa | None na znak] | None,
+#    "slowa": [{"x0", "x1", "top", "bottom"}]}  (punkty PDF, początek w lewym górnym rogu)
+
+WZORZEC_MARKERA_STRONY = re.compile(r"\[STRONA_(\d+)\]")
+
+
+def strona_ze_slow(numer, slowa):
+    """Strona ze słów z prostokątami; słowa sklejone spacją w kolejności czytania.
+
+    `mapa` wiąże każdy znak sklejonego tekstu ze słowem, z którego pochodzi —
+    po niej trafienie w tekście zamienia się w prostokąty na stronie.
+    """
+    fragmenty, mapa = [], []
+
+    for indeks, slowo in enumerate(slowa):
+        fragmenty.append(slowo["text"])
+        mapa.extend([indeks] * len(slowo["text"]))
+        fragmenty.append(" ")
+        mapa.append(None)
+
+    return {
+        "numer": numer,
+        "tekst": "".join(fragmenty),
+        "mapa": mapa,
+        "slowa": [
+            {"x0": s["x0"], "x1": s["x1"], "top": s["top"], "bottom": s["bottom"]}
+            for s in slowa
+        ],
+    }
+
+
+def strony_z_ocr(ocr_text):
+    """{numer strony: strona} z tekstu OCR z markerami [STRONA_X]."""
+    czesci = WZORZEC_MARKERA_STRONY.split(ocr_text or "")
+
+    return {
+        int(numer): {"numer": int(numer), "tekst": tekst, "mapa": None, "slowa": []}
+        for numer, tekst in zip(czesci[1::2], czesci[2::2])
+    }
+
+
+def zloz_strony(strony_pdf, strony_ocr, liczba_stron):
+    """Dla każdej strony: warstwa tekstowa PDF, jeśli ma słowa, inaczej tekst OCR.
+
+    Wybór per strona, bo zdarzają się dokumenty mieszane (skan z doklejoną
+    stroną wygenerowaną cyfrowo).
+    """
+    strony = []
+
+    for numer in range(1, liczba_stron + 1):
+        z_pdf = strony_pdf[numer - 1] if numer - 1 < len(strony_pdf) else None
+
+        if z_pdf and z_pdf["slowa"]:
+            strony.append(z_pdf)
+        elif numer in strony_ocr:
+            strony.append(strony_ocr[numer])
+        else:
+            strony.append({"numer": numer, "tekst": "", "mapa": None, "slowa": []})
+
+    return strony
+
+
+def scal_w_linie(slowa, indeksy):
+    """Jeden prostokąt na linię tekstu.
+
+    Fraza łamana między liniami daje dwa prostokąty, a nie jeden obejmujący
+    pół strony.
+    """
+    if not indeksy:
+        return []
+
+    boxy = [slowa[i] for i in sorted(indeksy)]
+    linie, biezaca = [], [boxy[0]]
+
+    for box in boxy[1:]:
+        poprzedni = biezaca[-1]
+        wysokosc = poprzedni["bottom"] - poprzedni["top"]
+        if abs(box["top"] - poprzedni["top"]) < wysokosc * 0.6:
+            biezaca.append(box)
+        else:
+            linie.append(biezaca)
+            biezaca = [box]
+    linie.append(biezaca)
+
+    return [{
+        "x0": min(b["x0"] for b in linia),
+        "x1": max(b["x1"] for b in linia),
+        "top": min(b["top"] for b in linia),
+        "bottom": max(b["bottom"] for b in linia),
+    } for linia in linie]
+
+
+def znajdz_w_stronach(strony, zapisy):
+    """Trafienia zapisów (format warianty_do_szukania) na stronach, po kolei.
+
+    Reguły szukania (dosłownie, odmiana jako zapas, każdy zapis daty i kwoty)
+    są te same co w sekcji SZUKANIE — tu dochodzi tylko numer strony
+    i prostokąty do podświetlenia.
+    """
+    trafienia = []
+
+    for strona in strony:
+        if not strona["tekst"].strip():
+            continue
+
+        for trafienie in szukaj_w_ocr_z_wariantami(strona["tekst"], zapisy):
+            prostokaty = []
+
+            if strona["mapa"]:
+                koniec = trafienie["pozycja"] + len(trafienie["trafienie"])
+                indeksy = {
+                    strona["mapa"][i]
+                    for i in range(trafienie["pozycja"], koniec)
+                    if strona["mapa"][i] is not None
+                }
+                prostokaty = scal_w_linie(strona["slowa"], indeksy)
+
+            trafienia.append({**trafienie, "strona": strona["numer"], "prostokaty": prostokaty})
+
+    return trafienia
+
+
+def pierwsze_do_pokazania(trafienia):
+    """Indeks trafienia, od którego zaczyna szukajka.
+
+    Klik w pole ma pokazać to, co w polu stoi — wartość niezgodną pokazujemy
+    na starcie tylko wtedy, gdy nic innego nie znaleziono.
+    """
+    for indeks, trafienie in enumerate(trafienia):
+        if trafienie.get("rodzaj") != "zla":
+            return indeks
+    return 0
+
+
+# =====================================================================
+# ROZBIEŻNOŚCI — weryfikacja wartości zgłoszonych przez model
+# =====================================================================
+# Weryfikacja rozbieżności zgłoszonych przez model z tekstem OCR.
+
+def wariant_stoi_w_tekscie(znorm_ocr, znorm_wariant):
+    """Czy wariant występuje w tekście jako osobny token.
+
+    Sprawdzamy, czy tuż przed i tuż po trafieniu nie stoi litera ani cyfra —
+    bez tego wariant "123" zostałby potwierdzony przez "1234" albo "A123",
+    a to inny numer.
+    """
+    if not znorm_wariant:
+        return False
+
+    wzor = r"(?<!\w)" + re.escape(znorm_wariant) + r"(?!\w)"
+    return re.search(wzor, znorm_ocr) is not None
+
+
+def zweryfikuj_warianty(ocr_text, rozbieznosci):
+    """Odsiewa wartości, których nie ma w tekście OCR.
+
+    Zwraca dwie listy:
+      potwierdzone — elementy w formacie z modelu, ale wyłącznie z wartościami
+                     potwierdzonymi w tekście; element bez żadnej potwierdzonej
+                     wartości znika w całości
+      odrzucone    — [{"pole": ..., "wartosc": ...}] — wartości zmyślone
+                     przez model; ich liczba to tania miara jakości promptu
+
+    Zachowujemy podział modelu na `wartosci_ok` i `wartosci_zle` — nie
+    poprawiamy go. Sprawdzamy wyłącznie obecność: wartość musi stać w tekście
+    dosłownie, jako osobny token (wielkość liter i układ spacji nie mają
+    znaczenia). Prompt każe modelowi przepisywać wartości dokładnie z tekstu,
+    więc wartość, której tam nie ma, jest błędem modelu, a nie innym zapisem.
+
+    Wartość identyczna z wartością główną (po normalizacji) i powtórzenia są
+    pomijane po cichu — to nie halucynacja, tylko szum, więc nie zawyżają
+    licznika odrzuconych. Wartość obecna zarazem w "ok" i w "złe" liczy się
+    jako "złe": lepiej pokazać analitykowi za dużo niż przemilczeć.
+
+    Bez tekstu OCR nic nie da się potwierdzić, więc zwracamy puste listy
+    (a nie "wszystko odrzucone" — brak tekstu to nie wina modelu).
+    """
+    potwierdzone = []
+    odrzucone = []
+
+    if not ocr_text or not isinstance(rozbieznosci, list):
+        return potwierdzone, odrzucone
+
+    znorm_ocr = normalizuj_do_porownania(ocr_text)
+
+    def lista_wartosci(surowa):
+        # model bywa niedbały — zamiast listy może dać napis albo nic
+        if not surowa:
+            return []
+        if isinstance(surowa, str):
+            return [surowa]
+        return list(surowa)
+
+    for wpis in rozbieznosci:
+        if not isinstance(wpis, dict):
+            continue
+
+        pole = wpis.get("pole")
+        glowna = str(wpis.get("wartosc_glowna") or "").strip()
+
+        widziane = {normalizuj_do_porownania(glowna)}
+        potwierdzone_ok = []
+        potwierdzone_zle = []
+
+        # "złe" przetwarzamy pierwsze, żeby wartość obecna w obu listach
+        # została w "złe" (patrz docstring)
+        for wartosc in lista_wartosci(wpis.get("wartosci_zle")):
+            wartosc = str(wartosc).strip()
+            znorm = normalizuj_do_porownania(wartosc)
+
+            if not znorm or znorm in widziane:
+                continue
+            widziane.add(znorm)
+
+            if wariant_stoi_w_tekscie(znorm_ocr, znorm):
+                potwierdzone_zle.append(wartosc)
+            else:
+                odrzucone.append({"pole": pole, "wartosc": wartosc})
+
+        for wartosc in lista_wartosci(wpis.get("wartosci_ok")):
+            wartosc = str(wartosc).strip()
+            znorm = normalizuj_do_porownania(wartosc)
+
+            if not znorm or znorm in widziane:
+                continue
+            widziane.add(znorm)
+
+            if wariant_stoi_w_tekscie(znorm_ocr, znorm):
+                potwierdzone_ok.append(wartosc)
+            else:
+                odrzucone.append({"pole": pole, "wartosc": wartosc})
+
+        if potwierdzone_ok or potwierdzone_zle:
+            potwierdzone.append({
+                "pole": pole,
+                "wartosc_glowna": glowna,
+                "wartosci_ok": potwierdzone_ok,
+                "wartosci_zle": potwierdzone_zle,
+                "uzasadnienie": str(wpis.get("uzasadnienie") or "").strip(),
+            })
+
+    return potwierdzone, odrzucone
+
+
+# =====================================================================
+# USTALENIA — panel „Do wyjaśnienia”
+# =====================================================================
+# Ustalenia do panelu analityka: walidacje, rozbieżności i weryfikacja UniFlow.
+
+# Waga ustalenia dla wartości "złych", zależna od tego, czego dotyczy pole.
+# Inna data albo inna osoba to sprzeczność w treści dokumentu — waga wysoka.
+# Identyfikator odczytany inaczej to najczęściej wada OCR — waga średnia.
+POZIOM_ROZBIEZNOSCI = {
+    "data_umowy": "wysoki",
+    "termin_przeniesienia_wlasnosci": "wysoki",
+    "termin_odrebnej_wlasnosci": "wysoki",
+    "nabywca_1": "wysoki",
+    "nabywca_2": "wysoki",
+    "nazwa_dewelopera": "wysoki",
+    "numer_umowy": "sredni",
+    "nip_dewelopera": "sredni",
+    "pesel_1": "sredni",
+    "pesel_2": "sredni",
+    "numer_dzialki": "sredni",
+    "numer_kw": "sredni",
+    "numer_rachunku_powierniczego": "sredni",
+    "otwarty_numer_rachunku_powierniczego": "sredni",
+}
+
+
+ETYKIETY_POL_ROZBIEZNOSCI = {
+    "numer_umowy": "Numer umowy",
+    "nip_dewelopera": "NIP dewelopera",
+    "pesel_1": "PESEL nabywcy 1",
+    "pesel_2": "PESEL nabywcy 2",
+    "numer_dzialki": "Numer działki",
+    "numer_kw": "Numer księgi wieczystej",
+    "numer_rachunku_powierniczego": "Numer rachunku powierniczego",
+    "otwarty_numer_rachunku_powierniczego": "Otwarty numer rachunku powierniczego",
+    "data_umowy": "Data umowy",
+    "termin_przeniesienia_wlasnosci": "Termin przeniesienia własności",
+    "termin_odrebnej_wlasnosci": "Termin ustanowienia odrębnej własności",
+    "nabywca_1": "Nabywca 1",
+    "nabywca_2": "Nabywca 2",
+    "nazwa_dewelopera": "Deweloper",
+}
+
+
+def stan_sekcji(klucze, wynik, problemy):
+    """Zlicza pola sekcji: wypełnione, z problemem, brakujące.
+
+    `problemy` to zbiór kluczy pól z rozbieżnością (patrz zbierz_problemy).
+    """
+    ok = z_problemem = brak = 0
+
+    for klucz in klucze:
+        wartosc = wynik.get(klucz)
+
+        if klucz in problemy:
+            z_problemem += 1
+        elif wartosc and str(wartosc).strip():
+            ok += 1
+        else:
+            brak += 1
+
+    return ok, z_problemem, brak
+
+
+# Mapowanie tytułów weryfikacji UniFlow na pola, których dotyczą.
+# Model zwraca luźne tytuły, więc dopasowujemy po początkach słów —
+# dzięki temu ostrzeżenie trafia też do dymka przy konkretnym polu.
+#
+# Kolejność ma znaczenie: wygrywa pierwsze dopasowanie. Nabywca jest na
+# końcu, bo słowo "nabywcy" pada w opisie niemal każdej niezgodności
+# ("PESEL drugiego nabywcy…"). "kw" tylko jako całe słowo — inaczej
+# łapało "kwotę".
+SLOWA_KLUCZOWE_POL = {
+    "pesel_1": [r"\bpesel"],
+    "numer_kw": [r"\bksieg", r"\bksiag", r"\bwieczyst", r"\bkw\b"],
+    "nazwa_dewelopera": [r"\bdewelop"],
+    "cena_nieruchomosci": [r"\bcen", r"\bkwot", r"\bwartos"],
+    "miasto": [r"\bmiejscowos", r"\bmiast"],
+    "ulica": [r"\bulic", r"\badres"],
+    "nabywca_1": [r"\bnabywc", r"\bwnioskodawc", r"\bimie", r"\bimion", r"\bnazwisk"],
+}
+
+# Pola osobowe, które dla drugiej osoby mają odpowiednik z sufiksem _2.
+POLA_OSOBOWE = {"nabywca_1": "nabywca_2", "pesel_1": "pesel_2"}
+
+# "drugiego nabywcy", "Nabywca 2", "PESEL nr 2" — ale nie "2 nabywców".
+WZORZEC_DRUGIEJ_OSOBY = r"\bdrugi|\b(?:nabywc|wnioskodawc|pesel)\w*\s+(?:nr\s+)?2\b"
+
+
+def dopasuj_pole(tytul, opis):
+    """Zgaduje, którego pola dotyczy wpis weryfikacji."""
+    tekst = normalizuj_do_szukania(f"{tytul} {opis}")
+
+    for pole, wzorce in SLOWA_KLUCZOWE_POL.items():
+        if any(re.search(wzorzec, tekst) for wzorzec in wzorce):
+            if pole in POLA_OSOBOWE and re.search(WZORZEC_DRUGIEJ_OSOBY, tekst):
+                return POLA_OSOBOWE[pole]
+            return pole
+
+    return None
+
+
+def zbierz_problemy(wynik, lista_weryfikacji, potwierdzone=None):
+    """Buduje listę ustaleń wymagających decyzji analityka.
+
+    Łączy dwa źródła o różnej wiarygodności:
+      - weryfikację UniFlow zwróconą przez model (miękka, opisowa)
+      - twarde walidacje liczone w Pythonie (suma kontrolna, arytmetyka)
+
+    Te drugie są pewniejsze, więc idą na górę listy.
+
+    `potwierdzone` (wynik potwierdzone_rozbieznosci) dodaje ustalenia o polach,
+    które w dokumencie występują w niezgodnych wartościach (inna data, inna
+    osoba, identyfikator odczytany inaczej) — tylko dla wartości, które
+    naprawdę stoją w tekście OCR. Waga zależy od kategorii.
+
+    Zgodności NIE trafiają do wyniku — panel, który potwierdza oczywistości,
+    przestaje być czytany po kilku analizach.
+    """
+    ustalenia = []
+
+    # --- twarde walidacje ---
+    for numer in ("1", "2"):
+        pesel = wynik.get(f"pesel_{numer}")
+        if pesel and waliduj_pesel(pesel) == "❌":
+            ustalenia.append({
+                "pole": f"pesel_{numer}",
+                "poziom": "wysoki",
+                "tytul": f"PESEL nabywcy {numer} — błędna suma kontrolna",
+                "opis": f"Odczytana wartość: {pesel}. Numer jest wewnętrznie niespójny.",
+                "krok": "Sprawdź numer w dokumencie — prawdopodobny błąd odczytu OCR.",
+            })
+
+    rachunek = wynik.get("numer_rachunku_powierniczego")
+    if rachunek:
+        status = waliduj_nrb(rachunek)
+        if status not in ("Poprawny strukturalnie", "Brak numeru"):
+            ustalenia.append({
+                "pole": "numer_rachunku_powierniczego",
+                "poziom": "wysoki",
+                "tytul": "Rachunek powierniczy — błędny numer",
+                "opis": f"{status}. Odczytana wartość: {rachunek}",
+                "krok": "Zweryfikuj numer przed uruchomieniem transz.",
+            })
+
+    if czy_wartosc_transakcji_zgodna(wynik) == "❌":
+        cena = wyciagnij_kwote(
+            wynik.get("laczna_wartosc_transakcji") or wynik.get("cena_nieruchomosci")
+        )
+        suma = sum(
+            wyciagnij_kwote(t.get("kwota"))
+            for t in wynik.get("harmonogram_transz", [])
+        )
+        roznica = abs(cena - suma) / 100
+        ustalenia.append({
+            "pole": "laczna_wartosc_transakcji",
+            "poziom": "sredni",
+            "tytul": "Suma transz nie zgadza się z wartością transakcji",
+            "opis": (
+                f"Wartość transakcji: {cena / 100:,.2f} zł. "
+                f"Suma transz: {suma / 100:,.2f} zł. "
+                f"Różnica: {roznica:,.2f} zł."
+            ).replace(",", " "),
+            "krok": "Sprawdź harmonogram — możliwy błąd odczytu kwoty transzy.",
+        })
+
+    # --- rozbieżności w dokumencie, potwierdzone w tekście OCR ---
+    # Ustalenie tworzą tylko wartości "złe". Wartości "ok" (ta sama data
+    # w innym zapisie, odmiana nazwiska) to zwykła umowa i panel ma o nich
+    # milczeć — służą wyłącznie do szukania stron.
+    #
+    # Tytuł i opis zawierają tekst z OCR i od modelu, a panel_ustalen renderuje
+    # HTML bez escapowania — dlatego escapujemy tutaj. Gdy naprawisz to w samym
+    # panel_ustalen (błąd nr 4 z listy), usuń stąd html.escape, żeby nie
+    # escapować dwa razy.
+    for wpis in (potwierdzone or []):
+        if not wpis["wartosci_zle"]:
+            continue
+
+        pole = wpis["pole"]
+        etykieta = ETYKIETY_POL_ROZBIEZNOSCI.get(pole, pole)
+
+        opis = (
+            f"Przyjęta wartość: {wpis['wartosc_glowna']}. "
+            f"W dokumencie występuje też: {', '.join(wpis['wartosci_zle'])}."
+        )
+        if wpis["uzasadnienie"]:
+            opis += f" {wpis['uzasadnienie']}"
+
+        ustalenia.append({
+            "pole": pole,
+            "poziom": POZIOM_ROZBIEZNOSCI.get(pole, "sredni"),
+            "tytul": html.escape(f"Pole „{etykieta}” — niezgodne wartości w dokumencie"),
+            "opis": html.escape(opis),
+            "krok": "Sprawdź na skanie, która wartość jest prawidłowa (możliwa pomyłka OCR albo niespójność dokumentu).",
+        })
+
+    # --- weryfikacja UniFlow z modelu: tylko to, co NIE jest zgodne ---
+    for wpis in (lista_weryfikacji or []):
+        status = str(wpis.get("status", "")).lower().strip()
+
+        if status == "zgodne":
+            continue
+
+        tytul = wpis.get("tytul", "")
+        opis = wpis.get("opis", "")
+
+        ustalenia.append({
+            "pole": dopasuj_pole(tytul, opis),
+            "poziom": "wysoki" if status == "niezgodne" else "sredni",
+            "tytul": tytul,
+            "opis": opis,
+            "krok": (
+                "Ustal przyczynę rozbieżności i udokumentuj."
+                if status == "niezgodne"
+                else "Uzupełnij brakujące dane przed zakończeniem analizy."
+            ),
+        })
+
+    kolejnosc = {"wysoki": 0, "sredni": 1}
+    ustalenia.sort(key=lambda u: kolejnosc.get(u["poziom"], 2))
+    return ustalenia
+
+
+def problemy_wg_pola(ustalenia):
+    """Mapa pole -> ustalenie, do dymków przy polach."""
+    mapa = {}
+    for ustalenie in ustalenia:
+        if ustalenie.get("pole"):
+            mapa.setdefault(ustalenie["pole"], ustalenie)
+    return mapa
+
+
+# =====================================================================
+# SCHEMATY, PROMPT I KLUCZ CACHE
+# =====================================================================
+# Schematy ekstrakcji, prompt i klucze cache.
+
+# Typ dokumentu -> plik schematu w katalogu schemy/.
+# Typ wybiera zakładka, w której analityk wgrał plik — nie nazwa pliku.
+# Zgadywanie z nazwy kierowało np. "przedwstepna_skan.pdf" wgrany w zakładce
+# umowy deweloperskiej na inny schemat.
+SCHEMATY = {
+    "umowa_deweloperska": "umowa_deweloperska",
+    "umowa_przedwstepna": "umowa_przedwstepna",
+    "umowa_rezerwacyjna": "umowa_rezerwacyjna",
+    "prospekt": "prospekt",
+    "oswiadczenie_zbywcy": "oswiadczenie_zbywcy",
+}
+
+# Treść przeniesiona 1:1 z wcześniejszego f-stringa (łącznie z wcięciami),
+# żeby refaktor nie zmienił tego, co widzi model.
+SZABLON_PROMPTU = """
+        DANE KLIENTÓW Z SYSTEMU UNIFLOW:
+
+        {tekst_uniflow}
+
+        PONIŻEJ ZNAJDUJE SIĘ TREŚĆ DOKUMENTU.
+
+        Porównuj dane klientów z UniFlow z danymi nabywców
+        występującymi w dokumencie.
+
+        TREŚĆ DOKUMENTU:
+
+        {ocr_text}
+        """
+
+
+def wczytaj_schema(typ_dokumentu):
+    if typ_dokumentu not in SCHEMATY:
+        raise ValueError(f"Nieznany typ dokumentu: {typ_dokumentu}")
+
+    with open(SCHEMY_DIR / f"{SCHEMATY[typ_dokumentu]}.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def tekst_uniflow(dane_uniflow):
+    return json.dumps(dane_uniflow or {}, ensure_ascii=False, indent=2, default=str)
+
+
+def zbuduj_prompt(dane_uniflow, ocr_text):
+    return SZABLON_PROMPTU.format(
+        tekst_uniflow=tekst_uniflow(dane_uniflow),
+        ocr_text=ocr_text,
+    )
+
+
+def policz_hash_pdf(plik_bajty):
+    return hashlib.sha256(plik_bajty).hexdigest()
+
+
+def klucz_wersji(schema, dane_uniflow):
+    """Wersja zapytania do modelu — trafia do kolumny hash_schematu w cache.
+
+    Obejmuje wszystko, co poza samym dokumentem zmienia wynik:
+      schemat         — inne pola albo opisy to inne pytanie do modelu
+      szablon promptu — jw.
+      dane UniFlow    — z nich liczona jest weryfikacja_uniflow; dopisanie
+                        wnioskodawcy albo poprawka PESEL w UniFlow musi
+                        unieważnić stary wynik
+
+    sort_keys: samo przestawienie pól w pliku schematu nie unieważnia cache.
+    """
+    tekst = json.dumps(
+        {"schema": schema, "prompt": SZABLON_PROMPTU, "uniflow": dane_uniflow or {}},
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(tekst.encode("utf-8")).hexdigest()
+
+
+# =====================================================================
+# API — endpointy OCR i Extract
+# =====================================================================
+# Endpointy OCR i Extract (sde_service): zlecenie zadania, odpytywanie, wynik.
+
+def _naglowki(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _czekaj_na_wynik(sciezka, run_id, token, limit_s, nazwa):
+    """Odpytuje status zadania do DONE, potem pobiera wynik.
+
+    Każda odpowiedź przechodzi przez raise_for_status: wygasły token (401)
+    w trakcie odpytywania ma dać błąd autoryzacji, a nie mylący komunikat
+    o przekroczonym czasie.
+    """
+    koniec = time.monotonic() + limit_s
+
+    while True:
+        odpowiedz = requests.get(
+            f"{BASE_URL}/{sciezka}/{run_id}/status",
+            headers=_naglowki(token),
+            verify=CA_CERT,
+            timeout=30,
+        )
+        odpowiedz.raise_for_status()
+        status = odpowiedz.json().get("job_status")
+
+        if status == "DONE":
+            break
+        if status in ("FAILED", "ERROR"):
+            raise RuntimeError(f"{nazwa} zakończona błędem (status={status})")
+        if time.monotonic() > koniec:
+            raise TimeoutError(f"Przekroczono limit oczekiwania na: {nazwa} ({limit_s} s).")
+
+        time.sleep(ODSTEP_ODPYTYWANIA_S)
+
+    odpowiedz = requests.get(
+        f"{BASE_URL}/{sciezka}/{run_id}",
+        headers=_naglowki(token),
+        verify=CA_CERT,
+        timeout=30,
+    )
+    odpowiedz.raise_for_status()
+    return odpowiedz.json()
+
+
+def wywolaj_ocr_api(plik_bajty, token, document_group_id):
+    """POST /legal_analysis/ocr — zwraca tekst dokumentu ze znacznikami PageBreak."""
+    odpowiedz = requests.post(
+        f"{BASE_URL}/legal_analysis/ocr",
+        headers={**_naglowki(token), "Content-Type": "application/octet-stream"},
+        params={
+            "document_group_id": document_group_id,
+            "document_type": "umowa",
+            "ocr_model": "prebuilt-layout",
+        },
+        data=plik_bajty,
+        verify=CA_CERT,
+        timeout=60,
+    )
+    odpowiedz.raise_for_status()
+    run_id = odpowiedz.json()["run_id"]
+
+    return _czekaj_na_wynik("legal_analysis/ocr", run_id, token, LIMIT_OCR_S, "OCR")
+
+
+def wywolaj_extract_api(tekst, token, document_id, schema):
+    """POST /legal_analysis/extract — zwraca słownik zgodny ze schematem."""
+    odpowiedz = requests.post(
+        f"{BASE_URL}/legal_analysis/extract",
+        headers=_naglowki(token),
+        json={
+            "ocr_text": tekst,
+            "schema": schema,
+            "metadata": {"document_id": document_id},
+        },
+        verify=CA_CERT,
+        timeout=60,
+    )
+    odpowiedz.raise_for_status()
+    run_id = odpowiedz.json()["run_id"]
+
+    wynik = _czekaj_na_wynik(
+        "legal_analysis/extract", run_id, token, LIMIT_EKSTRAKCJI_S, "Ekstrakcja"
+    )
+    return wynik["extracted"]
+
+
+def wczytaj_token_z_pliku(plik):
+    """access_token z pliku JSON albo None."""
+    try:
+        with open(plik, "r", encoding="utf-8") as f:
+            return json.load(f).get("access_token")
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+# =====================================================================
+# PDF — liczba stron, warstwa tekstowa, obraz strony
+# =====================================================================
+# Odczyt PDF: liczba stron, słowa z pozycjami (warstwa tekstowa), obraz strony.
+#
+# pdfplumber jest opcjonalny: bez niego (albo dla skanu bez warstwy tekstowej)
+# szukajka działa na tekście OCR i wskazuje stronę, ale nie podświetla frazy.
+
+def pdf_liczba_stron(plik_bajty):
+    dokument = pdfium.PdfDocument(plik_bajty)
+    try:
+        return len(dokument)
+    finally:
+        dokument.close()
+
+
+def pdf_slowa_stron(plik_bajty):
+    """Lista stron, każda jako lista słów {"text", "x0", "x1", "top", "bottom"}.
+
+    Współrzędne w punktach PDF, początek w lewym górnym rogu. Strona skanu
+    daje pustą listę.
+    """
+    if not MA_WARSTWE_TEKSTOWA:
+        return []
+
+    strony = []
+    with pdfplumber.open(io.BytesIO(plik_bajty)) as pdf:
+        for strona in pdf.pages:
+            strony.append([
+                {k: s[k] for k in ("text", "x0", "x1", "top", "bottom")}
+                for s in strona.extract_words(use_text_flow=True)
+            ])
+    return strony
+
+
+def pdf_renderuj_strone(plik_bajty, numer_strony, skala):
+    """Obraz strony (PIL, RGBA); numer_strony od 1."""
+    dokument = pdfium.PdfDocument(plik_bajty)
+    try:
+        return dokument[numer_strony - 1].render(scale=skala).to_pil().convert("RGBA")
+    finally:
+        dokument.close()
+
+
+# =====================================================================
+# TRYB OFFLINE — atrapy hurtowni i API (HIPOTEKA_OFFLINE=1)
+# =====================================================================
+# Atrapy hurtowni i API do pracy lokalnej (HIPOTEKA_OFFLINE=1).
+#
+# Zastępują WYŁĄCZNIE wejście/wyjście. Cała logika (szukajka, rozbieżności,
+# ustalenia, widoki) działa na tych danych dokładnie tak jak na produkcyjnych,
+# więc nie powtarza się problem dawnego trybu demo, który dublował analizę
+# i rozjeżdżał się ze schematem.
+#
+# Dane w katalogu dev/ (generuje je dev/generuj_umowe_demo.py):
+#   wnioskodawcy.json               wiersze tabeli wnioskodawców (jak z hurtowni)
+#   wynik_umowa_deweloperska.json   odpowiedź endpointu Extract
+#   umowa_demo_skan.pdf             skan umowy — typowy przypadek, bez warstwy tekstowej
+#   ocr_umowa_demo_skan.txt         odpowiedź endpointu OCR dla skanu
+#   umowa_demo.pdf                  ta sama umowa z warstwą tekstową
+#
+# OCR: dla PDF-a z warstwą tekstową zwraca ten tekst; dla skanu zwraca
+# ocr_umowa_demo_skan.txt (w formacie endpointu), niezależnie od wgranego
+# skanu. Extract zwraca zawsze ten sam JSON, niezależnie od pliku.
+
+# Ten sam zapis znacznika, który zwraca endpoint OCR — dodaj_markery_stron dzieli po nim strony.
+ZNACZNIK_STRONY = "&lt;!-- PageBreak --&gt;"
+
+_OFFLINE_CACHE = {}
+
+
+def _offline_json(nazwa):
+    with open(KATALOG_DEV / nazwa, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def offline_load_wnioskodawcy(nr_wniosku):
+    wiersze = [w for w in _offline_json("wnioskodawcy.json") if w["NR_WNIOSKU"] == str(nr_wniosku).strip()]
+    return pd.DataFrame(wiersze, columns=["NR_WNIOSKU", "IMIE", "NAZWISKO", "PESEL", "STAN_CYWILNY"])
+
+
+def offline_load_kwoty_kredytu(nr_wniosku):
+    return None
+
+
+def offline_get_document_cache(pdf_hash, nr_wniosku, hash_schematu):
+    return _OFFLINE_CACHE.get((pdf_hash, nr_wniosku, hash_schematu))
+
+
+def offline_save_document_cache(pdf_hash, nr_wniosku, hash_schematu, id_analizy,
+                        document_type, ocr_text, extracted_data):
+    _OFFLINE_CACHE[(pdf_hash, nr_wniosku, hash_schematu)] = {
+        "wynik": extracted_data,
+        "ocr_text": ocr_text,
+    }
+
+
+def offline_wczytaj_token():
+    return "offline"
+
+
+def offline_wywolaj_ocr(plik_bajty, token, document_group_id):
+    import pypdfium2 as pdfium
+
+    dokument = pdfium.PdfDocument(plik_bajty)
+    try:
+        strony = []
+        for strona in dokument:
+            tekst = strona.get_textpage()
+            strony.append(tekst.get_text_range())
+            tekst.close()
+            strona.close()
+    finally:
+        dokument.close()
+
+    time.sleep(0.5)
+
+    if not any(strona.strip() for strona in strony):
+        return (KATALOG_DEV / "ocr_umowa_demo_skan.txt").read_text(encoding="utf-8")
+
+    return ZNACZNIK_STRONY.join(strony)
+
+
+def offline_wywolaj_extract(tekst, token, document_id, schema):
+    time.sleep(0.5)
+    return _offline_json("wynik_umowa_deweloperska.json")
+
+
+# =====================================================================
+# ŹRÓDŁA DANYCH — prawdziwe albo offline
+# =====================================================================
+# Aplikacja sięga po hurtownię i API wyłącznie przez zrodla(), więc przełączenie
+# trybu nie dotyka logiki — zmienia się tylko, skąd przychodzą dane.
+# data_loader.py (hurtownia) importuje moduły, które istnieją tylko na serwerze,
+# dlatego jest importowany dopiero tutaj, a nie na początku pliku.
+
+@lru_cache(maxsize=None)
+def zrodla():
+    if OFFLINE:
+        return SimpleNamespace(
+            NAZWA="Offline (dev/)",
+            load_wnioskodawcy=offline_load_wnioskodawcy,
+            load_kwoty_kredytu=offline_load_kwoty_kredytu,
+            get_document_cache=offline_get_document_cache,
+            save_document_cache=offline_save_document_cache,
+            wczytaj_token=offline_wczytaj_token,
+            wywolaj_ocr=offline_wywolaj_ocr,
+            wywolaj_extract=offline_wywolaj_extract,
+        )
+
+    import data_loader
+
+    return SimpleNamespace(
+        NAZWA="Prawdziwe API",
+        load_wnioskodawcy=data_loader.load_wnioskodawcy,
+        load_kwoty_kredytu=data_loader.load_kwoty_kredytu,
+        get_document_cache=data_loader.get_document_cache,
+        save_document_cache=data_loader.save_document_cache,
+        wczytaj_token=lambda: wczytaj_token_z_pliku(PLIK_TOKENU),
+        wywolaj_ocr=wywolaj_ocr_api,
+        wywolaj_extract=wywolaj_extract_api,
+    )
+
+
+# =====================================================================
+# ANALIZA — cache → OCR → ekstrakcja → zapis do cache
+# =====================================================================
+# Przebieg analizy dokumentu: cache -> OCR -> ekstrakcja -> zapis do cache.
+#
+# Bez Streamlita: postęp raportowany przez callback, źródła danych (hurtownia,
+# API) wstrzykiwane parametrem — dzięki temu całość da się przetestować.
+
+@dataclass
+class Analiza:
+    """Wynik analizy jednego dokumentu w kontekście jednego wniosku."""
+    pdf_hash: str
+    nr_wniosku: str
+    nazwa_pliku: str
+    typ_dokumentu: str
+    ocr_text: str
+    wynik: dict
+    zrodlo: str
+    czas: str
+    id_analizy: str
+    ostrzezenia: list = field(default_factory=list)
+
+
+def _bez_postepu(procent, opis):
+    pass
+
+
+def analizuj(
+    plik_bajty,
+    nazwa_pliku,
+    nr_wniosku,
+    token,
+    dane_uniflow,
+    typ_dokumentu,
+    zrodla,
+    wymus=False,
+    postep=_bez_postepu,
+):
+    """Pełna analiza albo odczyt z cache. Zwraca Analiza.
+
+    `zrodla` to obiekt z funkcjami get_document_cache, save_document_cache,
+    wywolaj_ocr i wywolaj_extract (wynik zrodla() albo atrapa w testach).
+
+    Błąd OCR albo ekstrakcji przerywa analizę wyjątkiem. Błąd ZAPISU do cache
+    już nie: OCR i model zadziałały, więc analityk dostaje wynik, a problem
+    z zapisem trafia do `ostrzezenia`.
+    """
+    pdf_hash = policz_hash_pdf(plik_bajty)
+    schema = wczytaj_schema(typ_dokumentu)
+    klucz = klucz_wersji(schema, dane_uniflow)
+    id_analizy = str(uuid.uuid4())
+
+    def analiza(ocr_text, wynik, zrodlo, ostrzezenia=None):
+        return Analiza(
+            pdf_hash=pdf_hash,
+            nr_wniosku=nr_wniosku,
+            nazwa_pliku=nazwa_pliku,
+            typ_dokumentu=typ_dokumentu,
+            ocr_text=ocr_text,
+            wynik=wynik,
+            zrodlo=zrodlo,
+            czas=datetime.now().strftime("%H:%M:%S"),
+            id_analizy=id_analizy,
+            ostrzezenia=ostrzezenia or [],
+        )
+
+    if not wymus:
+        z_cache = zrodla.get_document_cache(
+            pdf_hash=pdf_hash,
+            nr_wniosku=nr_wniosku,
+            hash_schematu=klucz,
+        )
+        if z_cache is not None:
+            return analiza(z_cache["ocr_text"], z_cache["wynik"], "Cache Impala")
+
+    postep(20, "Krok 1/2: OCR...")
+    ocr_text = dodaj_markery_stron(zrodla.wywolaj_ocr(plik_bajty, token, nr_wniosku))
+
+    postep(70, f"Krok 2/2: Ekstrakcja ({typ_dokumentu})...")
+    wynik = zrodla.wywolaj_extract(
+        zbuduj_prompt(dane_uniflow, ocr_text), token, nr_wniosku, schema
+    )
+
+    ostrzezenia = []
+    try:
+        zrodla.save_document_cache(
+            pdf_hash=pdf_hash,
+            nr_wniosku=nr_wniosku,
+            hash_schematu=klucz,
+            id_analizy=id_analizy,
+            document_type=typ_dokumentu,
+            # markery [STRONA_X] muszą trafić do cache — bez nich
+            # szukajka i klik w pole nie wskażą strony
+            ocr_text=ocr_text,
+            extracted_data=wynik,
+        )
+    except Exception as blad:
+        ostrzezenia.append(
+            f"Wynik nie został zapisany do cache ({blad}). Analiza jest kompletna, "
+            "ale przy następnym otwarciu dokumentu zostanie wykonana ponownie."
+        )
+
+    postep(100, "Analiza zakończona.")
+    return analiza(ocr_text, wynik, getattr(zrodla, "NAZWA", "Prawdziwe API"), ostrzezenia)
+
+
+# =====================================================================
+# STAN SESJI
+# =====================================================================
+# Stan sesji Streamlita — wszystkie dane analizy trzymane pod jednym kluczem.
+#
+# Analiza jest przypisana do pary (hash dokumentu, numer wniosku). Wcześniej
+# wynik był zapisany pod samą nazwą pliku, a tekst OCR pod jednym kluczem
+# na całą sesję, przez co:
+#   - po zmianie numeru wniosku na ekranie zostawała weryfikacja UniFlow
+#     policzona dla poprzedniego wniosku,
+#   - inny plik o tej samej nazwie pokazywał stary wynik,
+#   - po wgraniu drugiego pliku szukajka działała na tekście pierwszego.
+
+_ANALIZY = "analizy"
+_UNIFLOW = "uniflow"
+
+
+def _klucz(pdf_hash, nr_wniosku):
+    return f"{pdf_hash}:{nr_wniosku}"
+
+
+# --- analizy ---
+
+def zapisz_analize(analiza):
+    st.session_state.setdefault(_ANALIZY, {})[
+        _klucz(analiza.pdf_hash, analiza.nr_wniosku)
+    ] = analiza
+
+
+def biezaca_analiza(pdf_hash, nr_wniosku):
+    """Analiza bieżącego dokumentu dla bieżącego wniosku albo None."""
+    if not pdf_hash or not nr_wniosku:
+        return None
+    return st.session_state.get(_ANALIZY, {}).get(_klucz(pdf_hash, nr_wniosku))
+
+
+def usun_analize(pdf_hash, nr_wniosku):
+    st.session_state.get(_ANALIZY, {}).pop(_klucz(pdf_hash, nr_wniosku), None)
+
+
+# --- dane wniosku z UniFlow ---
+
+def ustaw_uniflow(dane):
+    st.session_state[_UNIFLOW] = dane
+
+
+def dane_uniflow(nr_wniosku):
+    """Dane UniFlow, ale tylko jeśli dotyczą podanego wniosku.
+
+    Sprawdzenie numeru chroni przed wysłaniem do modelu danych klientów
+    z poprzednio wpisanego wniosku.
+    """
+    dane = st.session_state.get(_UNIFLOW)
+    if dane and dane.get("numer_wniosku") == nr_wniosku:
+        return dane
+    return None
+
+
+# --- wgrany dokument (osobno dla każdej zakładki) ---
+
+def zapamietaj_plik(typ_dokumentu, nazwa, bajty):
+    st.session_state[f"{typ_dokumentu}_plik"] = {
+        "nazwa": nazwa,
+        "bajty": bajty,
+        "hash": policz_hash_pdf(bajty),
+    }
+
+
+def wgrany_plik(typ_dokumentu):
+    return st.session_state.get(f"{typ_dokumentu}_plik")
+
+
+# =====================================================================
+# WIDOK: PANEL DOKUMENTU — szukajka i podgląd strony
+# =====================================================================
+# Panel dokumentu: szukajka, nawigacja po trafieniach i podgląd strony.
+#
+# Układ jak w app_lite: jedno pole szukania, jeden pasek nawigacji, pod nim
+# strona dokumentu. Klik w wartość pola po prawej wkleja ją do szukajki
+# i przełącza na pierwsze wystąpienie.
+#
+# Większość dokumentów to skany, a endpoint OCR (prebuilt-layout) zwraca sam
+# tekst w markdownie, podzielony na strony — bez pozycji słów. Dla takiej
+# strony szukajka przełącza podgląd na właściwą stronę i pokazuje nad nim
+# fragment tekstu z trafieniem. Tylko PDF z warstwą tekstową (rzadkość) daje
+# pozycje słów — wtedy trafienie jest dodatkowo zaznaczone na obrazie strony.
+
+KLUCZ_FRAZY = "fraza_ocr"
+KLUCZ_TRAFIENIA = "szukajka_nr"
+KLUCZ_STRONY = "wybrana_strona_pdf"
+KLUCZ_OSTATNIEJ_FRAZY = "szukajka_ostatnia_fraza"
+KLUCZ_DOKUMENTU = "szukajka_dokument"
+
+SKALA_RENDERU = 2.0
+MARGINES_RAMKI = 2
+WYSOKOSC_PODGLADU = 800
+
+# Kolor zależy od rodzaju trafienia (patrz warianty_do_szukania): przy polu
+# z rozbieżnością widać naraz wartość przyjętą, jej inne zapisy i wartości
+# niezgodne. "kolor" dla legendy w HTML, "rgb" do rysowania na stronie.
+RODZAJE_TRAFIEN = {
+    "szukana": {"etykieta": "szukana fraza", "kolor": "#D4A900", "rgb": (255, 214, 0)},
+    "glowna": {"etykieta": "wartość przyjęta", "kolor": "#D4A900", "rgb": (255, 214, 0)},
+    "ok": {"etykieta": "inny zapis tej samej wartości", "kolor": "#1E7C34", "rgb": (40, 170, 80)},
+    "zla": {"etykieta": "wartość niezgodna", "kolor": "#C0392B", "rgb": (225, 45, 45)},
+}
+ALFA_AKTYWNEGO = 110
+ALFA_POZOSTALYCH = 45
+OBRYS_AKTYWNEGO = (196, 30, 58)
+
+
+def ustaw_fraze_szukania(wartosc):
+    """Callback kliknięcia w wartość pola — wkleja ją do szukajki.
+
+    Musi to być callback: widget text_input ma własny klucz w session_state
+    i po pierwszym renderze ignoruje parametr `value`. Callbacki wykonują się
+    PRZED ponownym uruchomieniem skryptu, więc ustawiona tu wartość zdąży
+    trafić do widgetu.
+    """
+    st.session_state[KLUCZ_FRAZY] = str(wartosc)
+
+
+# --- dane dokumentu (cache per dokument) ---
+
+@st.cache_data(show_spinner="Wczytywanie dokumentu...", max_entries=16)
+def _strony_pdf(_plik_bajty, pdf_hash):
+    """Strony z warstwy tekstowej i liczba stron. Klucz cache: pdf_hash."""
+    liczba = pdf_liczba_stron(_plik_bajty)
+
+    try:
+        slowa = pdf_slowa_stron(_plik_bajty)
+    except Exception:
+        # uszkodzona albo nietypowa warstwa tekstowa nie może zablokować
+        # podglądu — zostaje szukanie w tekście OCR
+        slowa = []
+
+    return [strona_ze_slow(n, s) for n, s in enumerate(slowa, start=1)], liczba
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _obraz_strony(_plik_bajty, pdf_hash, numer_strony, skala):
+    return pdf_renderuj_strone(_plik_bajty, numer_strony, skala)
+
+
+def _zaznacz(obraz, trafienia_na_stronie, skala):
+    """PNG strony z zaznaczonymi trafieniami: [(trafienie, czy_aktywne)].
+
+    Aktywne mocno i z obrysem, pozostałe na tej samej stronie blado —
+    widać, że wystąpień jest więcej, ale wzrok idzie do bieżącego.
+    """
+    warstwa = Image.new("RGBA", obraz.size, (0, 0, 0, 0))
+    rysownik = ImageDraw.Draw(warstwa)
+
+    # aktywne na końcu, żeby leżało na wierzchu
+    for trafienie, aktywne in sorted(trafienia_na_stronie, key=lambda para: para[1]):
+        rgb = RODZAJE_TRAFIEN[trafienie["rodzaj"]]["rgb"]
+        alfa = ALFA_AKTYWNEGO if aktywne else ALFA_POZOSTALYCH
+
+        for p in trafienie["prostokaty"]:
+            ramka = [
+                (p["x0"] - MARGINES_RAMKI) * skala,
+                (p["top"] - MARGINES_RAMKI) * skala,
+                (p["x1"] + MARGINES_RAMKI) * skala,
+                (p["bottom"] + MARGINES_RAMKI) * skala,
+            ]
+            rysownik.rectangle(ramka, fill=rgb + (alfa,))
+            if aktywne:
+                rysownik.rectangle(ramka, outline=OBRYS_AKTYWNEGO, width=3)
+
+    bufor = io.BytesIO()
+    Image.alpha_composite(obraz, warstwa).convert("RGB").save(bufor, format="PNG")
+    return bufor.getvalue()
+
+
+# --- nawigacja ---
+
+def _przewin_trafienie(o_ile, ostatni):
+    numer = st.session_state.get(KLUCZ_TRAFIENIA, 0) + o_ile
+    st.session_state[KLUCZ_TRAFIENIA] = max(0, min(numer, ostatni))
+
+
+def _zmien_strone(o_ile, liczba_stron):
+    numer = st.session_state.get(KLUCZ_STRONY, 1) + o_ile
+    st.session_state[KLUCZ_STRONY] = max(1, min(numer, liczba_stron))
+
+
+def _pasek_nawigacji(trafienia, aktywne, strona, liczba_stron):
+    """Jeden pasek: po trafieniach, gdy są, a w przeciwnym razie po stronach."""
+    kol_wstecz, kol_opis, kol_dalej = st.columns([1.35, 2, 1.35])
+
+    if trafienia:
+        rodzaj = RODZAJE_TRAFIEN[trafienia[aktywne]["rodzaj"]]
+        opis = (
+            f'<span class="legenda-kropka" style="background:{rodzaj["kolor"]}"></span>'
+            f'Trafienie <b>{aktywne + 1}</b> z <b>{len(trafienia)}</b> · strona <b>{strona}</b>'
+        )
+        wstecz = ("← Poprzednie", aktywne == 0, _przewin_trafienie, (-1, len(trafienia) - 1))
+        dalej = ("Następne →", aktywne >= len(trafienia) - 1, _przewin_trafienie, (1, len(trafienia) - 1))
+    else:
+        opis = f"Strona <b>{strona}</b> z <b>{liczba_stron}</b>"
+        wstecz = ("← Strona", strona <= 1, _zmien_strone, (-1, liczba_stron))
+        dalej = ("Strona →", strona >= liczba_stron, _zmien_strone, (1, liczba_stron))
+
+    for kolumna, (etykieta, wylaczony, akcja, argumenty), klucz in (
+        (kol_wstecz, wstecz, "dokument_wstecz"),
+        (kol_dalej, dalej, "dokument_dalej"),
+    ):
+        with kolumna:
+            st.button(
+                etykieta,
+                key=klucz,
+                disabled=wylaczony,
+                use_container_width=True,
+                on_click=akcja,
+                args=argumenty,
+            )
+
+    with kol_opis:
+        st.markdown(f'<div class="pasek-nawigacji">{opis}</div>', unsafe_allow_html=True)
+
+
+def _legenda(trafienia):
+    """Legenda kolorów — tylko gdy w wynikach jest więcej niż jeden rodzaj."""
+    obecne = []
+    for trafienie in trafienia:
+        etykieta = RODZAJE_TRAFIEN[trafienie["rodzaj"]]["etykieta"]
+        if (trafienie["rodzaj"], etykieta) not in obecne:
+            obecne.append((trafienie["rodzaj"], etykieta))
+
+    if len(obecne) < 2:
+        return
+
+    wpisy = "".join(
+        f'<span class="legenda-wpis">'
+        f'<span class="legenda-kropka" style="background:{RODZAJE_TRAFIEN[rodzaj]["kolor"]}"></span>'
+        f'{etykieta}</span>'
+        for rodzaj, etykieta in obecne
+    )
+    st.markdown(f'<div class="legenda-trafien">{wpisy}</div>', unsafe_allow_html=True)
+
+
+def _przytnij(tekst, dlugosc, od_konca):
+    """Najwyżej `dlugosc` znaków, cięte na granicy słowa."""
+    if len(tekst) <= dlugosc:
+        return tekst
+    if od_konca:
+        wycinek = tekst[-dlugosc:]
+        return wycinek[wycinek.find(" ") + 1:] if " " in wycinek else wycinek
+    wycinek = tekst[:dlugosc]
+    return wycinek[:wycinek.rfind(" ")] if " " in wycinek else wycinek
+
+
+def _fragment(trafienie):
+    """Karta z trafieniem w tekście OCR — na skanie jedyny wskaźnik, gdzie stoi fraza.
+
+    Tekst przechodzi przez tekst_do_wyswietlenia: bez znaczników markdown
+    i tabel z odpowiedzi OCR, komórki tabeli rozdzielone " · ".
+    """
+    rodzaj = RODZAJE_TRAFIEN[trafienie["rodzaj"]]
+    przed = _przytnij(tekst_do_wyswietlenia(trafienie["przed"]).lstrip(), 150, od_konca=True)
+    po = _przytnij(tekst_do_wyswietlenia(trafienie["po"]).rstrip(), 150, od_konca=False)
+    fraza = tekst_do_wyswietlenia(trafienie["trafienie"]).strip()
+
+    meta = f'Strona {trafienie["strona"]} · tekst z OCR'
+    if not trafienie.get("dokladne", True):
+        meta += " · forma odmieniona"
+
+    st.markdown(
+        f'<div class="kontekst-trafienia" style="border-left-color:{rodzaj["kolor"]}">'
+        f'<div class="fragment-meta">{html.escape(meta)}</div>'
+        f'…{html.escape(przed)}'
+        f'<mark style="background:{rodzaj["kolor"]}33;box-shadow:inset 0 -2px 0 {rodzaj["kolor"]}">'
+        f'{html.escape(fraza)}</mark>'
+        f'{html.escape(po)}…'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# --- panel ---
+
+def panel_dokumentu(plik_bajty, pdf_hash, nazwa_pliku, ocr_text="", potwierdzone=None):
+    """Szukajka + podgląd dokumentu.
+
+    `ocr_text` (z markerami stron) uzupełnia strony bez warstwy tekstowej;
+    `potwierdzone` (rozbieżności) sprawia, że fraza będąca jednym z zapisów
+    pola szuka od razu wszystkich jego zapisów, w kolorach rodzaju.
+    """
+    st.markdown('<p class="naglowek-sekcji">📄 Dokument</p>', unsafe_allow_html=True)
+
+    # nowy dokument: od pierwszej strony i pierwszego trafienia
+    if st.session_state.get(KLUCZ_DOKUMENTU) != pdf_hash:
+        st.session_state[KLUCZ_DOKUMENTU] = pdf_hash
+        st.session_state[KLUCZ_STRONY] = 1
+        st.session_state[KLUCZ_TRAFIENIA] = 0
+        st.session_state[KLUCZ_OSTATNIEJ_FRAZY] = None
+
+    strony_pdf, liczba_stron = _strony_pdf(plik_bajty, pdf_hash)
+    strony = zloz_strony(strony_pdf, strony_z_ocr(ocr_text), liczba_stron)
+
+    # Skan przed analizą nie ma żadnego tekstu — szukajka czeka na OCR.
+    ma_tekst = any(strona["tekst"].strip() for strona in strony)
+
+    st.session_state.setdefault(KLUCZ_FRAZY, "")
+
+    fraza = st.text_input(
+        "Szukaj w dokumencie",
+        key=KLUCZ_FRAZY,
+        placeholder=(
+            "Wpisz frazę albo kliknij wartość pola po prawej"
+            if ma_tekst
+            else "Szukanie w dokumencie będzie dostępne po analizie (OCR)"
+        ),
+        disabled=not ma_tekst,
+        label_visibility="collapsed",
+    )
+    if not ma_tekst:
+        fraza = ""
+
+    trafienia = []
+    if fraza.strip():
+        trafienia = znajdz_w_stronach(strony, warianty_do_szukania(fraza, potwierdzone))
+
+    # nowa fraza (wpisana albo z kliknięcia w pole) zaczyna od pierwszego
+    # trafienia wartości przyjętej, nie od wartości niezgodnej
+    if fraza != st.session_state.get(KLUCZ_OSTATNIEJ_FRAZY):
+        st.session_state[KLUCZ_OSTATNIEJ_FRAZY] = fraza
+        st.session_state[KLUCZ_TRAFIENIA] = pierwsze_do_pokazania(trafienia)
+
+    aktywne = max(0, min(st.session_state.get(KLUCZ_TRAFIENIA, 0), len(trafienia) - 1))
+
+    if trafienia:
+        strona = trafienia[aktywne]["strona"]
+        st.session_state[KLUCZ_STRONY] = strona
+    else:
+        strona = max(1, min(st.session_state.get(KLUCZ_STRONY, 1), liczba_stron))
+
+    if fraza.strip() and not trafienia:
+        st.warning(
+            f"Nie znaleziono „{fraza}” w dokumencie. "
+            "Wartość może być zapisana inaczej albo pochodzić z błędnego odczytu."
+        )
+
+    _pasek_nawigacji(trafienia, aktywne, strona, liczba_stron)
+
+    if trafienia:
+        _legenda(trafienia)
+        if not trafienia[aktywne]["prostokaty"]:
+            _fragment(trafienia[aktywne])
+
+    obraz = _obraz_strony(plik_bajty, pdf_hash, strona, SKALA_RENDERU)
+    na_stronie = [
+        (trafienie, indeks == aktywne)
+        for indeks, trafienie in enumerate(trafienia)
+        if trafienie["strona"] == strona
+    ]
+
+    with st.container(height=WYSOKOSC_PODGLADU, border=True):
+        st.image(_zaznacz(obraz, na_stronie, SKALA_RENDERU), use_container_width=True)
+
+    kol_info, kol_pobierz = st.columns([3, 1])
+    with kol_info:
+        st.markdown(
+            f'<div class="info-pliku">{html.escape(nazwa_pliku)} · '
+            f'{len(plik_bajty) / 1024:.0f} KB · {liczba_stron} str.</div>',
+            unsafe_allow_html=True,
+        )
+    with kol_pobierz:
+        st.download_button(
+            "⬇ Pobierz",
+            data=plik_bajty,
+            file_name=nazwa_pliku,
+            mime="application/pdf",
+            use_container_width=True,
+        )
+
+
+# =====================================================================
+# WIDOKI APLIKACJI
+# =====================================================================
+
+
 # Logo liczone od katalogu aplikacji, nie od katalogu uruchomienia.
 # Brak pliku (np. lokalnie) nie blokuje aplikacji — po prostu nie ma logo.
 logo_base64 = (
     base64.b64encode(PLIK_LOGO.read_bytes()).decode()
     if PLIK_LOGO.exists()
     else ""
-)
-
-# =====================================================================
-# KONFIGURACJA STRONY
-# =====================================================================
-
-st.set_page_config(
-    page_title="Hipoteka AI - Analiza Umowy Deweloperskiej",
-    page_icon="🏦",
-    layout="wide",
 )
 
 
@@ -529,13 +2590,21 @@ CUSTOM_CSS = """
     }
 </style>
 """
-st.markdown(
-    CUSTOM_CSS.replace(
-        "LOGO_PLACEHOLDER",
-        logo_base64
-    ),
-    unsafe_allow_html=True
-)
+def konfiguruj_strone():
+    """Ustawienia strony i style — pierwsze wywołania Streamlita w main().
+
+    Wewnątrz funkcji, a nie na poziomie pliku, żeby import app.py (np. w testach)
+    nie uruchamiał Streamlita.
+    """
+    st.set_page_config(
+        page_title="Hipoteka AI - Analiza Umowy Deweloperskiej",
+        page_icon="🏦",
+        layout="wide",
+    )
+    st.markdown(
+        CUSTOM_CSS.replace("LOGO_PLACEHOLDER", logo_base64),
+        unsafe_allow_html=True,
+    )
 
 
 # =====================================================================
@@ -551,7 +2620,7 @@ def panel_konfiguracji():
     """
     st.sidebar.markdown("## ⚙️ Konfiguracja")
 
-    token = zrodla.wczytaj_token()
+    token = zrodla().wczytaj_token()
 
     if OFFLINE:
         st.sidebar.warning("Tryb offline: dane przykładowe z katalogu dev/, bez hurtowni i API.")
@@ -638,22 +2707,22 @@ def sekcja_dane_uniflow(nr_wniosku):
     # Dane poprzedniego wniosku czyścimy przy każdym wyjściu bez trafienia —
     # inaczej trafiłyby do promptu analizy dla innego numeru.
     if not nr_wniosku:
-        stan.ustaw_uniflow(None)
+        ustaw_uniflow(None)
         return
 
     if not czy_poprawny_numer_wniosku(nr_wniosku):
-        stan.ustaw_uniflow(None)
+        ustaw_uniflow(None)
         st.error("Numer wniosku może zawierać tylko litery, cyfry i znaki / _ . -")
         return
 
-    rekord = zrodla.load_wnioskodawcy(nr_wniosku)
+    rekord = zrodla().load_wnioskodawcy(nr_wniosku)
 
     if rekord.empty:
-        stan.ustaw_uniflow(None)
+        ustaw_uniflow(None)
         st.warning(f"Nie znaleziono wniosku {nr_wniosku}")
         return
 
-    stan.ustaw_uniflow({
+    ustaw_uniflow({
         "numer_wniosku": nr_wniosku,
         "wnioskodawcy": rekord[
             ["IMIE", "NAZWISKO", "PESEL", "STAN_CYWILNY"]
@@ -1582,7 +3651,7 @@ def widok_ryzyk(lista_ryzyk):
 # =====================================================================
 
 def uruchom_analize(plik_bajty, nazwa_pliku, numer_wniosku, token, typ_dokumentu, wymus_ponowna_analize=False):
-    """Uruchamia analizę (services.analiza) i zapisuje wynik w stanie sesji."""
+    """Uruchamia analizę (analizuj) i zapisuje wynik w stanie sesji."""
     pasek = st.progress(0, text="Rozpoczynanie analizy...")
 
     try:
@@ -1591,9 +3660,9 @@ def uruchom_analize(plik_bajty, nazwa_pliku, numer_wniosku, token, typ_dokumentu
             nazwa_pliku=nazwa_pliku,
             nr_wniosku=numer_wniosku,
             token=token,
-            dane_uniflow=stan.dane_uniflow(numer_wniosku),
+            dane_uniflow=dane_uniflow(numer_wniosku),
             typ_dokumentu=typ_dokumentu,
-            zrodla=zrodla,
+            zrodla=zrodla(),
             wymus=wymus_ponowna_analize,
             postep=lambda procent, opis: pasek.progress(procent, text=opis),
         )
@@ -1603,12 +3672,12 @@ def uruchom_analize(plik_bajty, nazwa_pliku, numer_wniosku, token, typ_dokumentu
         return
 
     pasek.empty()
-    stan.zapisz_analize(analiza)
+    zapisz_analize(analiza)
     st.rerun()
 
 
 def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, pdf_hash, numer_wniosku, token, typ_dokumentu):
-    analiza = stan.biezaca_analiza(pdf_hash, numer_wniosku)
+    analiza = biezaca_analiza(pdf_hash, numer_wniosku)
 
     if analiza is None:
         st.markdown('<p class="naglowek-sekcji">🔑 Kluczowe dane</p>', unsafe_allow_html=True)
@@ -1620,7 +3689,7 @@ def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, pdf_hash, numer_wniosk
 
         # Bez danych wniosku model nie ma z czym porównać nabywców, a wynik
         # z pustą weryfikacją trafiłby do cache — dlatego analiza czeka na wniosek.
-        ma_wniosek = stan.dane_uniflow(numer_wniosku) is not None
+        ma_wniosek = dane_uniflow(numer_wniosku) is not None
         czy_gotowe = bool(token) and ma_wniosek
 
         wymus_ponowna_analize = st.checkbox(
@@ -1648,7 +3717,7 @@ def sekcja_akcja_i_kluczowe_dane(plik_bajty, nazwa_pliku, pdf_hash, numer_wniosk
         )
     with col_przycisk:
         if st.button("↺ Ponów"):
-            stan.usun_analize(pdf_hash, numer_wniosku)
+            usun_analize(pdf_hash, numer_wniosku)
             st.rerun()
 
     for ostrzezenie in analiza.ostrzezenia:
@@ -1798,9 +3867,9 @@ def zakladka_umowa_deweloperska(
     plik = sekcja_upload_widget()
 
     if plik:
-        stan.zapamietaj_plik(typ_dokumentu, plik.name, plik.getvalue())
+        zapamietaj_plik(typ_dokumentu, plik.name, plik.getvalue())
 
-    plik_dane = stan.plik(typ_dokumentu)
+    plik_dane = wgrany_plik(typ_dokumentu)
 
     if not plik_dane:
         return
@@ -1809,7 +3878,7 @@ def zakladka_umowa_deweloperska(
     nazwa_pliku = plik_dane["nazwa"]
     pdf_hash = plik_dane["hash"]
 
-    analiza = stan.biezaca_analiza(pdf_hash, nr_wniosku)
+    analiza = biezaca_analiza(pdf_hash, nr_wniosku)
     potwierdzone = potwierdzone_rozbieznosci(analiza) if analiza else None
 
     # Panel ustaleń na pełnej szerokości — przed podziałem na kolumny.
@@ -1855,9 +3924,9 @@ def zakladka_umowa_deweloperska(
     
 def zakladka_podsumowanie(nr_wniosku):
 
-    plik_dane = stan.plik("umowa_deweloperska")
+    plik_dane = wgrany_plik("umowa_deweloperska")
     analiza = (
-        stan.biezaca_analiza(plik_dane["hash"], nr_wniosku)
+        biezaca_analiza(plik_dane["hash"], nr_wniosku)
         if plik_dane
         else None
     )
@@ -1872,6 +3941,8 @@ def zakladka_podsumowanie(nr_wniosku):
         
 
 def main():
+    konfiguruj_strone()
+
     token = panel_konfiguracji()
 
     banner_naglowek()

@@ -1,13 +1,14 @@
 """Hurtownia (Impala/Hadoop): dane wniosku z UniFlow i cache wyników ekstrakcji.
 
 Moduły helpers, config i impala_connector istnieją wyłącznie na serwerze,
-dlatego ten plik importuje się tylko tam. Lokalnie aplikacja korzysta
-z services/offline.py (HIPOTEKA_OFFLINE=1).
+dlatego app.py importuje ten plik dopiero w funkcji zrodla(). Lokalnie
+aplikacja działa w trybie offline (HIPOTEKA_OFFLINE=1) i tego pliku nie używa.
 
 Zapytania są budowane z f-stringów, bo hadoop_execute_df nie przyjmuje
-parametrów. Każda wartość wstawiana do SQL przechodzi przez _literal(),
-która przepuszcza wyłącznie bezpieczne znaki — wpisanie w pole numeru
-wniosku apostrofu albo średnika kończy się błędem, a nie zapytaniem.
+parametrów. Każda wartość wstawiana do SQL przechodzi przez _numer_wniosku()
+albo _hash(), które przepuszczają wyłącznie bezpieczne znaki — wpisanie
+w pole numeru wniosku apostrofu albo średnika kończy się błędem, a nie
+zapytaniem.
 """
 
 import json
@@ -19,7 +20,6 @@ import streamlit as st
 
 from config import database, database_result, domena, username
 from config import param_bs_params_impala_host, param_bs_params_krb_host
-from core.walidacje import czy_poprawny_numer_wniosku
 from helpers import hadoop_execute_df
 from impala_connector.impala_connector import ImpalaConnector
 
@@ -27,10 +27,14 @@ TABELA_CACHE = "gen_ai_extract_cache"
 
 _HASH = re.compile(r"[0-9a-f]{64}")
 
+# Ta sama reguła co WZORZEC_NUMERU_WNIOSKU w app.py (tam: komunikat dla
+# analityka, tu: ostatnia bramka przed SQL). Zmieniając jedną, zmień obie.
+_NUMER_WNIOSKU = re.compile(r"[A-Za-z0-9][A-Za-z0-9/_.\-]{0,63}")
+
 
 def _numer_wniosku(nr_wniosku):
     nr = str(nr_wniosku or "").strip()
-    if not czy_poprawny_numer_wniosku(nr):
+    if not _NUMER_WNIOSKU.fullmatch(nr):
         raise ValueError(f"Niepoprawny numer wniosku: {nr!r}")
     return nr
 

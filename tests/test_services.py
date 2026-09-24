@@ -6,10 +6,10 @@ from datetime import datetime
 import pandas as pd
 import pytest
 
-from core.walidacje import czy_poprawny_numer_wniosku
-from services import offline
-from services.analiza import analizuj
-from services.schemy import SZABLON_PROMPTU, klucz_wersji, wczytaj_schema, zbuduj_prompt
+from app import czy_poprawny_numer_wniosku
+import app
+from app import analizuj
+from app import SZABLON_PROMPTU, klucz_wersji, wczytaj_schema, zbuduj_prompt
 
 UNIFLOW = {"numer_wniosku": "KHB1553044", "wnioskodawcy": [{"IMIE": "Adam", "NAZWISKO": "Nowak"}]}
 
@@ -154,24 +154,24 @@ def test_blad_ekstrakcji_przerywa_analize():
 # --- tryb offline ---
 
 def test_offline_wnioskodawcy_i_ocr_z_pdf():
-    assert len(offline.load_wnioskodawcy("KHB1553044")) == 2
-    assert offline.load_wnioskodawcy("INNY").empty
+    assert len(app.offline_load_wnioskodawcy("KHB1553044")) == 2
+    assert app.offline_load_wnioskodawcy("INNY").empty
 
     with open("dev/umowa_demo.pdf", "rb") as f:
-        ocr = offline.wywolaj_ocr(f.read(), "t", "KHB1553044")
+        ocr = app.offline_wywolaj_ocr(f.read(), "t", "KHB1553044")
 
-    assert ocr.count(offline.ZNACZNIK_STRONY) == 2
+    assert ocr.count(app.ZNACZNIK_STRONY) == 2
     assert "Repertorium A Nr 1123/2026" in ocr
 
 
 def test_offline_wynik_zgodny_ze_schematem():
     schema = wczytaj_schema("umowa_deweloperska")
-    wynik = offline.wywolaj_extract("", "t", "x", schema)
+    wynik = app.offline_wywolaj_extract("", "t", "x", schema)
     assert set(wynik) <= set(schema["properties"])
     assert set(schema["required"]) <= set(wynik)
 
 
-# --- hurtownia (moduły serwera podstawione atrapami) ---
+# --- hurtownia, data_loader.py (moduły serwera podstawione atrapami) ---
 
 @pytest.fixture
 def hurtownia(monkeypatch):
@@ -203,13 +203,13 @@ def hurtownia(monkeypatch):
         sys.modules, "impala_connector.impala_connector",
         types.SimpleNamespace(ImpalaConnector=ImpalaConnector),
     )
-    monkeypatch.delitem(sys.modules, "services.hurtownia", raising=False)
+    monkeypatch.delitem(sys.modules, "data_loader", raising=False)
 
-    modul = importlib.import_module("services.hurtownia")
+    modul = importlib.import_module("data_loader")
     modul.load_wnioskodawcy.clear()
     modul._zapytania, modul._inserty = zapytania, inserty
     yield modul
-    sys.modules.pop("services.hurtownia", None)
+    sys.modules.pop("data_loader", None)
 
 
 def test_hurtownia_odrzuca_sql_injection(hurtownia):

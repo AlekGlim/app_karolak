@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from core.kwoty import kwota_na_grosze, wyciagnij_kwote, wzorzec_kwoty
+from app import kwota_na_grosze, wyciagnij_kwote, wzorzec_kwoty
 
 
 @pytest.mark.parametrize("tekst, grosze", [

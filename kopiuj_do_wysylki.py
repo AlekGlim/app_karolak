@@ -5,7 +5,7 @@ Uruchomienie z katalogu projektu:
 
     python kopiuj_do_wysylki.py
 
-Struktura katalogów zostaje zachowana (core/szukanie.py -> paczka_wysylka/core/szukanie.py.txt).
+Struktura katalogów zostaje zachowana (schemy/umowa_deweloperska.json -> paczka_wysylka/schemy/umowa_deweloperska.json.txt).
 Na drugim komputerze wystarczy odtworzyć te same katalogi i usunąć końcówkę .txt
 z nazw — patrz docs/INSTRUKCJA.md, "Przeniesienie projektu na inny komputer".
 
@@ -21,16 +21,12 @@ KATALOG_PACZKI = KATALOG_PROJEKTU / "paczka_wysylka"
 # Pliki i katalogi potrzebne do uruchomienia aplikacji.
 WYMAGANE = [
     "app.py",
-    "stan.py",
-    "ustawienia.py",
+    "data_loader.py",
+    "schemy",
     "requirements.txt",
     "README.md",
-    "core",
-    "services",
-    "ui",
-    "schemy",
-    "dev",       # dane trybu offline
     "docs",
+    "dev",       # dane trybu offline — potrzebne tylko do pracy lokalnej
     # "tests", "pytest.ini", "requirements-dev.txt",   # odkomentuj, żeby wysłać też testy
 ]
 

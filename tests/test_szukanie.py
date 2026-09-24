@@ -1,4 +1,4 @@
-from core.szukanie import (
+from app import (
     strona_dla_kwoty,
     strona_dla_tokenu,
     strona_dla_wartosci,
